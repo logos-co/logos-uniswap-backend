@@ -1,0 +1,18 @@
+name: Windows
+
+# The per-repo cost of Windows CI; the harness lives once in logos-co/logos-windows-ci.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  windows:
+    uses: logos-co/logos-windows-ci/.github/workflows/windows-ci.yml@v1
+    secrets: inherit
+    with:
+      targets: default
+      # The sibling composer's measured figure; re-measure on this repo's first run.
+      cold-derivation-budget: 160
