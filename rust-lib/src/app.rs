@@ -35,6 +35,13 @@ pub struct SwapForm {
     pub slippage_bps: i64,
     pub deadline_mins: i64,
     pub recipient: String,
+    /// Fees the user set, wei in decimal digits. `None` leaves the field to the tier.
+    pub max_fee_per_gas: Option<String>,
+    pub max_priority_fee_per_gas: Option<String>,
+    /// One per call, in the order the swap is built; `None` leaves that call estimated.
+    pub gas_limits: Vec<Option<String>>,
+    /// A number to replace the transaction pending at. The sender refuses it for a bundle.
+    pub nonce: Option<u64>,
 }
 
 fn text(o: &Value, key: &str) -> String {
@@ -54,6 +61,30 @@ pub fn parse_form(request_json: &str) -> Result<SwapForm, String> {
     }
     let decimals = |key: &str| r.get(key).and_then(Value::as_u64).and_then(|d| u32::try_from(d).ok());
     let tier = text(&r, "tier");
+    let wei = |v: Option<&Value>, what: &str| -> Result<Option<String>, String> {
+        match v {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(t)) if t.trim().is_empty() => Ok(None),
+            Some(Value::String(t)) if is_digits(t.trim()) => Ok(Some(t.trim().to_string())),
+            Some(Value::Number(n)) if n.is_u64() => Ok(Some(n.to_string())),
+            _ => Err(format!("{what} must be a whole number in decimal digits")),
+        }
+    };
+    let gas_limits = match r.get("gasLimits") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .map(|g| match wei(Some(g), "a gas limit")? {
+                Some(v) if v.trim_start_matches('0').is_empty() => Err("a gas limit must be more than zero".to_string()),
+                v => Ok(v),
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err("gasLimits must list one gas limit, or null, per call".into()),
+    };
+    let nonce = match wei(r.get("nonce"), "nonce")? {
+        Some(n) => Some(n.parse::<u64>().map_err(|_| "nonce is out of range".to_string())?),
+        None => None,
+    };
     let f = SwapForm {
         chain_id: r.get("chainId").and_then(Value::as_i64).unwrap_or(0),
         from: text(&r, "from"),
@@ -69,6 +100,10 @@ pub fn parse_form(request_json: &str) -> Result<SwapForm, String> {
         slippage_bps: r.get("slippageBps").and_then(Value::as_i64).unwrap_or(50),
         deadline_mins: r.get("deadlineMins").and_then(Value::as_i64).unwrap_or(30),
         recipient: text(&r, "recipient"),
+        max_fee_per_gas: wei(r.get("maxFeePerGas"), "maxFeePerGas")?,
+        max_priority_fee_per_gas: wei(r.get("maxPriorityFeePerGas"), "maxPriorityFeePerGas")?,
+        gas_limits,
+        nonce,
     };
     if f.chain_id <= 0 {
         return Err("chainId is required".into());
@@ -146,16 +181,24 @@ pub fn swap_module_request(f: &SwapForm, deadline: u64) -> Value {
     o
 }
 
-/// The sender's request for a built swap. No leg carries a gas limit: `fee_module` estimates
-/// the swap behind its approval, and a limit invented here would only stand in its way.
-pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> Value {
+/// The sender's request for a built swap, with the user's own fees, gas limits and nonce. A leg
+/// carries a gas limit only when the user set one: `fee_module` estimates the swap behind its
+/// approval, and a limit invented here would only stand in its way.
+pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> Result<Value, String> {
     let route = built.get("route").cloned().unwrap_or_else(|| json!({}));
-    let calls: Vec<Value> = built
-        .get("calls")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|c| {
+    let built_calls = built.get("calls").and_then(Value::as_array).cloned().unwrap_or_default();
+    // Limits set for another build of the swap would land on the wrong calls.
+    if !f.gas_limits.is_empty() && f.gas_limits.len() != built_calls.len() {
+        return Err(format!(
+            "gas limits were set for {} calls, but the swap is now {} — review it again",
+            f.gas_limits.len(),
+            built_calls.len()
+        ));
+    }
+    let calls: Vec<Value> = built_calls
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
             let meta = json!({
                 "app": APP, "via": via, "kind": str_of(c, "kind"),
                 "tokenIn": f.token_in, "tokenOut": f.token_out,
@@ -164,11 +207,25 @@ pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> 
                 "amountIn": f.amount_in, "amountOut": str_of(built, "amountOut"),
                 "amountOutMin": str_of(built, "amountOutMin"), "route": route,
             });
-            json!({ "to": str_of(c, "to"), "value": str_of(c, "value"), "data": str_of(c, "data"),
-                    "label": str_of(c, "label"), "meta": meta })
+            let mut call = json!({ "to": str_of(c, "to"), "value": str_of(c, "value"), "data": str_of(c, "data"),
+                                   "label": str_of(c, "label"), "meta": meta });
+            if let Some(Some(g)) = f.gas_limits.get(i) {
+                call["gasLimit"] = json!(g);
+            }
+            call
         })
         .collect();
-    json!({ "chainId": f.chain_id, "from": f.from, "purpose": purpose, "calls": calls, "tier": f.tier })
+    let mut req = json!({ "chainId": f.chain_id, "from": f.from, "purpose": purpose, "calls": calls, "tier": f.tier });
+    if let Some(v) = &f.max_fee_per_gas {
+        req["maxFeePerGas"] = json!(v);
+    }
+    if let Some(v) = &f.max_priority_fee_per_gas {
+        req["maxPriorityFeePerGas"] = json!(v);
+    }
+    if let Some(n) = f.nonce {
+        req["nonce"] = json!(n);
+    }
+    Ok(req)
 }
 
 /// The sentence the keystore shows the human and the sender records: what leaves, what at
@@ -473,7 +530,7 @@ mod tests {
     #[test]
     fn the_sender_gets_every_call_tagged_and_no_gas_limit() {
         let f = form(json!({}));
-        let sr = sender_request(&built(), &f, "uniswap_ui", "P");
+        let sr = sender_request(&built(), &f, "uniswap_ui", "P").unwrap();
         let calls = sr["calls"].as_array().unwrap();
         assert_eq!(calls.len(), 2);
         assert!(calls[0]["label"].as_str().unwrap().starts_with("Approve"), "in order");
@@ -487,6 +544,48 @@ mod tests {
         assert_eq!(sr["tier"], "normal");
         assert_eq!(sr["chainId"], 11155111);
         assert_eq!(sr["purpose"], "P");
+        for k in ["maxFeePerGas", "maxPriorityFeePerGas", "nonce"] {
+            assert!(sr.get(k).is_none(), "{k} is the sender's to choose unless the user set it");
+        }
+    }
+
+    // The user's own fees, per-call gas limits and nonce reach the sender as given; the rules
+    // for them (the tier, a replacement's floor, a bundle that cannot be pinned) are its own.
+    #[test]
+    fn the_users_fee_fields_reach_the_sender_as_given() {
+        let f = form(json!({ "maxFeePerGas": "372524310", "maxPriorityFeePerGas": 37979581,
+                             "gasLimits": [null, "200000"], "nonce": 40 }));
+        let sr = sender_request(&built(), &f, "uniswap_ui", "P").unwrap();
+        assert_eq!((sr["maxFeePerGas"].as_str(), sr["maxPriorityFeePerGas"].as_str()), (Some("372524310"), Some("37979581")));
+        assert_eq!(sr["nonce"], 40);
+        let calls = sr["calls"].as_array().unwrap();
+        assert!(calls[0].get("gasLimit").is_none(), "an unset limit is left to the estimator");
+        assert_eq!(calls[1]["gasLimit"], "200000");
+        let blank = form(json!({ "maxFeePerGas": "", "gasLimits": [], "nonce": null }));
+        assert_eq!((blank.max_fee_per_gas, blank.gas_limits.len(), blank.nonce), (None, 0, None));
+    }
+
+    #[test]
+    fn a_fee_field_that_is_not_a_whole_number_is_refused() {
+        let refused = |k: &str, v: Value| {
+            let mut r = json!({ "chainId": 1, "from": "0xf39F", "tokenIn": "ETH", "tokenOut": USDC, "amountUnits": "1" });
+            r[k] = v;
+            parse_form(&r.to_string()).unwrap_err()
+        };
+        assert!(refused("maxFeePerGas", json!("3.5 gwei")).contains("maxFeePerGas must be a whole number"));
+        assert!(refused("maxPriorityFeePerGas", json!(-1)).contains("maxPriorityFeePerGas"));
+        assert!(refused("gasLimits", json!("200000")).contains("one gas limit, or null, per call"));
+        assert!(refused("gasLimits", json!(["0"])).contains("more than zero"));
+        assert!(refused("nonce", json!("forty")).contains("nonce must be a whole number"));
+        assert!(refused("nonce", json!("99999999999999999999")).contains("out of range"));
+    }
+
+    // Limits set against one build of the swap must not land on another's calls.
+    #[test]
+    fn gas_limits_for_a_differently_built_swap_are_refused() {
+        let f = form(json!({ "gasLimits": ["180000"] }));
+        let e = sender_request(&built(), &f, "uniswap_ui", "P").unwrap_err();
+        assert!(e.contains("set for 1 calls, but the swap is now 2"), "{e}");
     }
 
     #[test]

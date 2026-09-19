@@ -354,6 +354,38 @@ sections:
           - '"gasSource":"estimated"'
           - '"gasSource":"simulated"'
           - '"feeCeilingWeiExact"'
+      - title: "The user's own fees and gas limit"
+        text: |
+          What a view's Advanced section sets reaches the sender as given: both fee fields, and
+          a gas limit per call in the order the swap is built, `null` leaving the approval
+          estimated. The sender prices them as `custom`.
+        run: |
+          python3 -c '
+          import json
+          r = json.load(open("swap.json"))
+          r.update({"maxFeePerGas": "5000000000", "maxPriorityFeePerGas": "2000000000", "gasLimits": [None, "300000"]})
+          json.dump(r, open("swap-custom.json", "w"))'
+          ./logos/bin/logosctl --config-dir ./session call uniswap_backend quote @swap-custom.json --human
+        code_block: |
+          logosctl call uniswap_backend quote '{…, "maxFeePerGas": "5000000000", "maxPriorityFeePerGas": "2000000000", "gasLimits": [null, "300000"]}'
+        expect_contains:
+          - '"maxFeePerGas":"5000000000"'
+          - '"maxPriorityFeePerGas":"2000000000"'
+          - '"feeSource":"custom"'
+          - '"gasLimit":300000,"gasSource":"given"'
+      - title: "A two-transaction swap cannot be pinned to one nonce"
+        text: |
+          A nonce replaces ONE pending transaction. The sender says so, and the quote carries
+          the refusal under `fee` rather than a price.
+        run: |
+          python3 -c '
+          import json
+          r = json.load(open("swap.json")); r["nonce"] = 0
+          json.dump(r, open("swap-pinned.json", "w"))'
+          ./logos/bin/logosctl --config-dir ./session call uniswap_backend quote @swap-pinned.json --human
+        code_block: "logosctl call uniswap_backend quote '{…, \"nonce\": 0}'"
+        expect_contains:
+          - "a bundle cannot be pinned"
 
   - title: "Swap: one approval, two transactions"
     step: true
