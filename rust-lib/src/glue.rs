@@ -19,7 +19,7 @@ use crate::budget::{
     QUOTE_BUDGET, READ_BUDGET, SENDER_BUDGET, STARTUP_BUDGET, STATUS_BUDGET, SWAP_BUDGET,
     TOKENS_BUDGET, VERDICT_BUDGET,
 };
-use crate::depinit::{self, Next};
+use crate::depinit;
 use crate::verified;
 
 pub trait UniswapBackendModule: Send + Sync + 'static {
@@ -275,24 +275,16 @@ impl UniswapBackendImpl {
         }
     }
 
-    /// Ask token_list whether it holds a config and, only if it says it holds none, have it
-    /// apply its own defaults: a device with no wallet on it still needs a catalogue.
+    /// Have token_list apply its own defaults: a device with no wallet on it still needs a
+    /// catalogue. No `config_status` gate: it writes them only when nothing is configured.
     fn ensure_token_list(&self, b: &Budget) {
         if self.token_list_settled.load(Ordering::Relaxed) {
             return;
         }
-        let Some(t) = b.take(PROBE_BUDGET) else { return };
-        let Ok(status) = modules().token_list_module.config_status_with_timeout(t) else { return };
-        match depinit::next_step(&status) {
-            Next::Settled => self.token_list_settled.store(true, Ordering::Relaxed),
-            Next::Initialize => {
-                let Some(t) = b.take(INIT_BUDGET) else { return };
-                let applied = modules().token_list_module.init_defaults_with_timeout(t);
-                if applied.map(|raw| depinit::reply_ok(&raw)).unwrap_or(false) {
-                    self.token_list_settled.store(true, Ordering::Relaxed);
-                }
-            }
-            Next::AskAgain => {}
+        let Some(t) = b.take(INIT_BUDGET) else { return };
+        let applied = modules().token_list_module.init_defaults_with_timeout(t);
+        if applied.map(|raw| depinit::reply_ok(&raw)).unwrap_or(false) {
+            self.token_list_settled.store(true, Ordering::Relaxed);
         }
     }
 
