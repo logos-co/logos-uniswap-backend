@@ -49,8 +49,10 @@ Swaps:
   reply is `uniswap_module`'s build with display figures and the sender's pricing under `fee`.
 - `swap(request)` — builds the swap afresh, tags every call, writes the purpose and asks the
   sender: `{ ok, pending, requestId, handle, purpose, amountOutMin, deadline }`.
-- `swap_status(request_id)` — the sender's `send_status` plus `final`. Polling is the
-  broadcast; `final: false` means ask again, refusals included.
+- `swap_status(request_id)` — the sender's `send_status` and its `final`. Polling is the
+  broadcast; `final: false` means ask again, refusals included — the sender calls a refusal
+  final only when it holds no such request. A sender that predates `final` is read off
+  `status`: only `awaitingApproval` and `broadcasting` still move, and no refusal is final.
 - `cancel_swap(request_id)`, `swaps(address, chain_id)` — the app's swaps, newest first, one
   entry per bundle with its legs.
 

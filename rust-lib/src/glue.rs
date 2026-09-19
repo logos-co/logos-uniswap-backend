@@ -67,8 +67,9 @@ pub trait UniswapBackendModule: Send + Sync + 'static {
     /// `swap_status`.
     fn swap(&self, request_json: String) -> String;
 
-    /// Advance a swap and report where it got to: the sender's `send_status` plus `final`.
-    /// Polling IS the broadcast. `final: false` means ask again, refusals included.
+    /// Advance a swap and report where it got to: the sender's `send_status` and its `final`,
+    /// read off `status` for a sender that predates it. Polling IS the broadcast. `final:
+    /// false` means ask again, refusals included.
     fn swap_status(&self, request_id: String) -> String;
 
     /// Withdraw a swap nobody has approved yet, releasing its nonces.
@@ -576,13 +577,16 @@ impl UniswapBackendModule for UniswapBackendImpl {
     fn swap_status(&self, request_id: String) -> String {
         self.arm();
         let b = Budget::new(STATUS_BUDGET);
-        let Some(t) = b.take(STATUS_BUDGET) else { return err("no time left to read the swap") };
+        let Some(t) = b.take(STATUS_BUDGET) else {
+            return json!({ "ok": false, "final": false, "error": "no time left to read the swap" }).to_string();
+        };
         match modules().tx_sender_module.send_status_with_timeout(&request_id, t) {
             Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                Ok(mut v) => {
+                Ok(mut v) if v.is_object() => {
                     v["final"] = json!(app::is_final(&v));
                     v.to_string()
                 }
+                Ok(_) => json!({ "ok": false, "final": false, "error": "tx_sender_module: the reply is not an object" }).to_string(),
                 Err(e) => json!({ "ok": false, "final": false, "error": format!("tx_sender_module: {e}") }).to_string(),
             },
             // The sender may still be broadcasting behind a call that ran out of time.
