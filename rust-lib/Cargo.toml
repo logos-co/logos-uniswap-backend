@@ -1,0 +1,25 @@
+[package]
+name = "uniswap_backend"
+version = "0.1.0"
+edition = "2021"
+description = "Logos uniswap_backend — the Uniswap app's backend, composing reusable EVM modules."
+# Pin to the nix toolchain's rustc; resolver "3" then selects MSRV-compatible deps.
+rust-version = "1.89"
+
+[workspace]
+resolver = "3"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# JSON in, JSON out: every amount is a decimal string and the chain is reached through the
+# modules this one composes, so there is no ABI or big-integer work here.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+logos-rust-sdk = { path = "../logos-rust-sdk-src", optional = true }
+
+[features]
+default = ["logos_module"]
+logos_module = ["dep:logos-rust-sdk"]

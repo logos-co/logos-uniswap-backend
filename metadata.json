@@ -1,0 +1,31 @@
+{
+  "name": "uniswap_backend",
+  "display_name": "Uniswap Backend",
+  "version": "0.1.0",
+  "type": "core",
+  "interface": "cdylib",
+  "concurrency": "multi",
+  "category": "wallet",
+  "description": "The Uniswap app's backend: quotes, swaps and swap history composed from reusable EVM chain, token, asset, account, fee, quote and sender modules. Holds no key material.",
+  "author": "Logos Core Team",
+  "main": "uniswap_backend_plugin",
+  "dependencies": [
+    { "name": "eth_rpc_module", "version": "~0.1.0" },
+    { "name": "token_list_module", "version": "~0.1.0" },
+    { "name": "evm_assets_module", "version": "~0.1.0" },
+    { "name": "fee_module", "version": "~0.1.0" },
+    { "name": "keystore_module", "version": "~0.1.0" },
+    { "name": "tx_sender_module", "version": "~0.1.0" },
+    { "name": "uniswap_module", "version": "~0.1.0" }
+  ],
+  "include": [],
+  "capabilities": [],
+  "codegen": {
+    "rust": { "crate": "rust-lib", "trait": "UniswapBackendModule", "source": "src/glue.rs" }
+  },
+  "nix": {
+    "external_libraries": [],
+    "packages": { "build": [], "runtime": [] },
+    "cmake": { "find_packages": [], "extra_include_dirs": [] }
+  }
+}

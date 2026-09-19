@@ -1,0 +1,56 @@
+name: uniswap_backend Unit Tests
+
+# The pure core and the source-shape guards, on every change. `--no-default-features` drops the
+# `logos_module` glue and the SDK with it, so this needs no nix and no module host.
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-test:
+    name: cargo test (pure core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89"
+
+      - name: Provide the SDK manifest cargo insists on resolving
+        # The SDK is never compiled here, but cargo resolves an optional path dependency's
+        # manifest, and `logos-rust-sdk-src` is gitignored because the builder stages it.
+        uses: actions/checkout@v4
+        with:
+          repository: logos-co/logos-rust-sdk
+          path: logos-rust-sdk-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-lib
+
+      - name: cargo test --no-default-features
+        run: cargo test --manifest-path rust-lib/Cargo.toml --no-default-features --locked
+
+      - name: The source-shape guards must actually be present
+        # A guard over glue.rs's text goes green the moment it stops being compiled, so name
+        # them rather than trusting the run above.
+        run: |
+          out=$(cargo test --manifest-path rust-lib/Cargo.toml --no-default-features --locked -- --list)
+          for t in every_outbound_call_is_bounded \
+                   the_keystore_client_only_reads \
+                   money_leaves_through_one_sender_call \
+                   the_words_a_human_approves_are_composed_in_app_alone \
+                   app::tests::only_the_end_of_a_swap_is_final; do
+            echo "$out" | grep -q "^$t: test$" || { echo "MISSING: $t"; exit 1; }
+          done
+          n=$(echo "$out" | grep -c ': test$')
+          echo "tests: $n"; [ "$n" -ge 31 ]
