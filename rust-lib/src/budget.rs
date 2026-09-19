@@ -13,7 +13,8 @@ pub const LOCAL_BUDGET: Duration = Duration::from_secs(3);
 
 pub const STARTUP_BUDGET: Duration = Duration::from_secs(6);
 pub const READ_BUDGET: Duration = Duration::from_secs(4);
-/// `tokens` and `catalogue`: seeding token_list on a fresh profile, then two local reads.
+/// `tokens` and `catalogue`: seeding eth_rpc and token_list on a fresh profile, then two local
+/// reads.
 pub const TOKENS_BUDGET: Duration = Duration::from_secs(8);
 pub const ACCOUNTS_BUDGET: Duration = Duration::from_secs(6);
 /// A verdict polled every five seconds must not outlast its own interval.

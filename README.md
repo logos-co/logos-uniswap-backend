@@ -20,6 +20,11 @@ It composes reusable EVM modules and owns only the Uniswap app's rules:
 It holds no key material and signs nothing: every swap leaves through `tx_sender_module`, and
 the human's yes is taken by `evm_signer_ui` (or `evm_signer_cli`), once, for every call.
 
+On start, wherever it ensures `token_list_module`'s defaults, and in front of the registry read,
+it asks `eth_rpc_module.init_defaults` for the default chains until one call lands. It does not
+ask `config_status` first: eth_rpc fills only what is absent and seeds a default chain at most
+once per device.
+
 ## Contract
 
 Reads:
