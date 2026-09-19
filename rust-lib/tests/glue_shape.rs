@@ -1,7 +1,8 @@
 //! A source-shape guard on `glue.rs`, which `--no-default-features` cannot compile: every
 //! outbound call is bounded, the keystore client only reads, money leaves through one sender
-//! call, the words a human approves are composed in `app.rs` alone, and eth_rpc's defaults are
-//! asked for with no gate. Every check ships with the mutant it must reject.
+//! call, the words a human approves are composed in `app.rs` alone, and eth_rpc's and
+//! token_list's defaults are asked for with no gate. Every check ships with the mutant it must
+//! reject.
 
 const GLUE: &str = include_str!("../src/glue.rs");
 
@@ -76,8 +77,8 @@ fn uniswap_calls(src: &str) -> Vec<String> {
         .collect()
 }
 
-fn eth_rpc_calls(src: &str) -> Vec<String> {
-    calls(src).into_iter().filter(|(c, _)| c == "eth_rpc_module").map(|(_, m)| m).collect()
+fn calls_on(src: &str, client: &str) -> Vec<String> {
+    calls(src).into_iter().filter(|(c, _)| c == client).map(|(_, m)| m).collect()
 }
 
 /// Sites that ensure token_list's defaults without first asking eth_rpc for its own.
@@ -87,10 +88,11 @@ fn unpaired_default_sites(src: &str) -> usize {
         - flat.matches("self.ensure_eth_rpc(&b);self.ensure_token_list(&b);").count()
 }
 
-/// The body of `fn <name>`, braces matched on the blanked code.
+/// The body of the last `fn <name>`, braces matched on the blanked code: an impl's, below its
+/// trait's declaration or default.
 fn body(src: &str, name: &str) -> String {
     let code = code_only(src);
-    let at = code.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
+    let at = code.rfind(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
     let open = at + code[at..].find('{').expect("a body");
     let mut depth = 0;
     for (k, ch) in code[open..].char_indices() {
@@ -163,7 +165,7 @@ fn no_lock_is_held_because_none_exists() {
 /// app already wrote to reads `configured` and still lacks what it needs.
 #[test]
 fn eth_rpc_defaults_are_asked_for_without_a_gate() {
-    let asked = eth_rpc_calls(GLUE);
+    let asked = calls_on(GLUE, "eth_rpc_module");
     assert_eq!(asked.iter().filter(|m| *m == "init_defaults_with_timeout").count(), 1, "{asked:?}");
     assert!(!asked.iter().any(|m| m.starts_with("config_status")), "{asked:?}");
     assert_eq!(unpaired_default_sites(GLUE), 0);
@@ -175,11 +177,35 @@ fn eth_rpc_defaults_are_asked_for_without_a_gate() {
         1,
     );
     assert_ne!(gated, GLUE, "the mutant applies");
-    assert!(eth_rpc_calls(&gated).iter().any(|m| m.starts_with("config_status")));
+    assert!(calls_on(&gated, "eth_rpc_module").iter().any(|m| m.starts_with("config_status")));
     let unpaired = GLUE.replacen("self.ensure_eth_rpc(&b);\n        self.ensure_token_list(&b);", "self.ensure_token_list(&b);", 1);
     assert_ne!(unpaired, GLUE, "the mutant applies");
     assert_eq!(unpaired_default_sites(&unpaired), 1);
     let skipped = GLUE.replacen("        self.ensure_eth_rpc(b);\n", "", 1);
     assert_ne!(skipped, GLUE, "the mutant applies");
     assert!(!body(&skipped, "chain_configs").contains("self.ensure_eth_rpc(b)"));
+}
+
+/// token_list owns its catalogue's defaults and writes them only when nothing is configured, so
+/// they are asked for the same way: on start and in front of both token reads, with no gate.
+#[test]
+fn token_list_defaults_are_asked_for_without_a_gate() {
+    let asked = calls_on(GLUE, "token_list_module");
+    assert_eq!(asked.iter().filter(|m| *m == "init_defaults_with_timeout").count(), 1, "{asked:?}");
+    assert!(!asked.iter().any(|m| m.starts_with("config_status")), "{asked:?}");
+    assert!(body(GLUE, "ensure_token_list").contains(".token_list_module.init_defaults_with_timeout("));
+    for f in ["on_context_ready", "tokens", "catalogue"] {
+        assert!(body(GLUE, f).contains("self.ensure_token_list(&b)"), "{f}");
+    }
+
+    let gated = GLUE.replacen(
+        "let applied = modules().token_list_module.init_defaults_with_timeout(t);",
+        "let _ = modules().token_list_module.config_status_with_timeout(t);\n        let applied = modules().token_list_module.init_defaults_with_timeout(t);",
+        1,
+    );
+    assert_ne!(gated, GLUE, "the mutant applies");
+    assert!(calls_on(&gated, "token_list_module").iter().any(|m| m.starts_with("config_status")));
+    let skipped = GLUE.replacen("        self.ensure_token_list(&b);\n        let native", "        let native", 1);
+    assert_ne!(skipped, GLUE, "the mutant applies");
+    assert!(!body(&skipped, "catalogue").contains("self.ensure_token_list(&b)"));
 }

@@ -23,7 +23,8 @@ the human's yes is taken by `evm_signer_ui` (or `evm_signer_cli`), once, for eve
 On start, wherever it ensures `token_list_module`'s defaults, and in front of the registry read,
 it asks `eth_rpc_module.init_defaults` for the default chains until one call lands. It does not
 ask `config_status` first: eth_rpc fills only what is absent and seeds a default chain at most
-once per device.
+once per device. `token_list_module.init_defaults` is asked the same way, on start and in front
+of the token reads: token_list writes its defaults only when nothing is configured.
 
 ## Contract
 
