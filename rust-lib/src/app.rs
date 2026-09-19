@@ -288,15 +288,16 @@ pub fn group_swaps(rows: &[Value], app: &str) -> Vec<Value> {
     finished
 }
 
-/// Whether a `send_status` reply is the end of the swap. `awaitingApproval` (a send held by the
-/// verified gate included) and `broadcasting` still move; `stuck` may already be on chain but
-/// the sender says a caller may stop waiting on it. A refusal is final only when the sender no
-/// longer knows the request: its other refusals leave the send untouched for the next poll.
+/// Whether a `send_status` reply is the end of the swap: the sender's own `final`. A sender that
+/// predates it is read the way it behaves — `awaitingApproval` (held by the verified gate
+/// included) and `broadcasting` still move — and none of its refusals is final, because it
+/// cannot say which of them is.
 pub fn is_final(reply: &Value) -> bool {
-    if reply.get("ok").and_then(Value::as_bool) != Some(true) {
-        return str_of(reply, "error").starts_with("no send with id");
+    if let Some(f) = reply.get("final").and_then(Value::as_bool) {
+        return f;
     }
-    !matches!(str_of(reply, "status"), "awaitingApproval" | "broadcasting")
+    reply.get("ok").and_then(Value::as_bool) == Some(true)
+        && !matches!(str_of(reply, "status"), "awaitingApproval" | "broadcasting")
 }
 
 /// The chains uniswap_module holds a deployment for, from its `get_chains` reply.
@@ -553,6 +554,23 @@ mod tests {
 
     #[test]
     fn only_the_end_of_a_swap_is_final() {
+        for (reply, want) in [
+            (json!({ "ok": true, "status": "awaitingApproval", "final": false }), false),
+            (json!({ "ok": true, "status": "awaitingApproval", "blocked": true, "final": false }), false),
+            (json!({ "ok": true, "status": "broadcasting", "final": false }), false),
+            (json!({ "ok": true, "status": "stuck", "final": true }), true),
+            (json!({ "ok": true, "status": "broadcast", "final": true }), true),
+            (json!({ "ok": false, "error": "no time left to read the approval", "final": false }), false),
+            (json!({ "ok": false, "error": "no send with id 'snd_x'", "final": true }), true),
+        ] {
+            assert_eq!(is_final(&reply), want, "{reply}");
+        }
+        // The sender's word, never its sentence.
+        assert!(!is_final(&json!({ "ok": false, "error": "no send with id 'snd_x'", "final": false })));
+    }
+
+    #[test]
+    fn a_sender_that_predates_final_is_read_the_way_it_behaves() {
         for live in ["awaitingApproval", "broadcasting"] {
             assert!(!is_final(&json!({ "ok": true, "status": live })), "{live}");
         }
@@ -560,8 +578,9 @@ mod tests {
         for done in ["broadcast", "rejected", "cancelled", "failed", "stuck"] {
             assert!(is_final(&json!({ "ok": true, "status": done })), "{done}");
         }
-        assert!(!is_final(&json!({ "ok": false, "error": "no time left to read the approval" })), "a transient refusal");
-        assert!(is_final(&json!({ "ok": false, "error": "no send with id 'snd_x'" })));
+        for error in ["no time left to read the approval", "no send with id 'snd_x'"] {
+            assert!(!is_final(&json!({ "ok": false, "error": error })), "{error}");
+        }
     }
 
     #[test]

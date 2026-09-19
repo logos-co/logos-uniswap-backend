@@ -392,6 +392,12 @@ sections:
           - "2 item(s) to sign:"
           - "Selector: 0x095ea7b3"
           - "Selector: 0x18cbafe5"
+      - title: "Waiting on the human is not final"
+        run: "./logos/bin/logosctl --config-dir ./session call uniswap_backend swap_status \"$(cat rid.txt)\" --human"
+        code_block: "logosctl call uniswap_backend swap_status <requestId>"
+        expect_contains:
+          - '"status":"awaitingApproval"'
+          - '"final":false'
       - title: "The human says yes, once"
         run: |
           ./logos/bin/logosctl --config-dir ./session call evm_signer_cli status --human \
@@ -418,6 +424,12 @@ sections:
           - '"status":"broadcast"'
           - '"final":true'
           - "HASHES=2"
+      - title: "A refusal is final only for a request the sender does not hold"
+        run: "./logos/bin/logosctl --config-dir ./session call uniswap_backend swap_status snd_unknown --human"
+        code_block: "logosctl call uniswap_backend swap_status snd_unknown"
+        expect_contains:
+          - '"ok":false'
+          - '"final":true'
 
   - title: "On the chain"
     step: true
