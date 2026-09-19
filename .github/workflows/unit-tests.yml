@@ -49,8 +49,9 @@ jobs:
                    the_keystore_client_only_reads \
                    money_leaves_through_one_sender_call \
                    the_words_a_human_approves_are_composed_in_app_alone \
+                   eth_rpc_defaults_are_asked_for_without_a_gate \
                    app::tests::only_the_end_of_a_swap_is_final; do
             echo "$out" | grep -q "^$t: test$" || { echo "MISSING: $t"; exit 1; }
           done
           n=$(echo "$out" | grep -c ': test$')
-          echo "tests: $n"; [ "$n" -ge 31 ]
+          echo "tests: $n"; [ "$n" -ge 32 ]

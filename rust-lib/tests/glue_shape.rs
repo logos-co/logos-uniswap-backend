@@ -1,7 +1,7 @@
 //! A source-shape guard on `glue.rs`, which `--no-default-features` cannot compile: every
 //! outbound call is bounded, the keystore client only reads, money leaves through one sender
-//! call, and the words a human approves are composed in `app.rs` alone. Every check ships with
-//! the mutant it must reject.
+//! call, the words a human approves are composed in `app.rs` alone, and eth_rpc's defaults are
+//! asked for with no gate. Every check ships with the mutant it must reject.
 
 const GLUE: &str = include_str!("../src/glue.rs");
 
@@ -76,6 +76,34 @@ fn uniswap_calls(src: &str) -> Vec<String> {
         .collect()
 }
 
+fn eth_rpc_calls(src: &str) -> Vec<String> {
+    calls(src).into_iter().filter(|(c, _)| c == "eth_rpc_module").map(|(_, m)| m).collect()
+}
+
+/// Sites that ensure token_list's defaults without first asking eth_rpc for its own.
+fn unpaired_default_sites(src: &str) -> usize {
+    let flat: String = code_only(src).chars().filter(|c| !c.is_whitespace()).collect();
+    flat.matches("self.ensure_token_list(").count()
+        - flat.matches("self.ensure_eth_rpc(&b);self.ensure_token_list(&b);").count()
+}
+
+/// The body of `fn <name>`, braces matched on the blanked code.
+fn body(src: &str, name: &str) -> String {
+    let code = code_only(src);
+    let at = code.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
+    let open = at + code[at..].find('{').expect("a body");
+    let mut depth = 0;
+    for (k, ch) in code[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' if depth == 1 => return code[open..=open + k].to_string(),
+            '}' => depth -= 1,
+            _ => {}
+        }
+    }
+    code[open..].to_string()
+}
+
 /// Wording a human approves, composed here instead of in `app.rs`.
 fn purpose_outside_app(src: &str) -> bool {
     src.contains("on Uniswap") || src.contains("for at least")
@@ -128,4 +156,30 @@ fn the_words_a_human_approves_are_composed_in_app_alone() {
 fn no_lock_is_held_because_none_exists() {
     let code = code_only(GLUE);
     assert!(!code.contains("Mutex") && !code.contains("RwLock"), "glue keeps no locked state");
+}
+
+/// eth_rpc owns its defaults and this backend asks for them wherever it ensures token_list's,
+/// and in front of the registry read. A `config_status` gate would strand them: a store another
+/// app already wrote to reads `configured` and still lacks what it needs.
+#[test]
+fn eth_rpc_defaults_are_asked_for_without_a_gate() {
+    let asked = eth_rpc_calls(GLUE);
+    assert_eq!(asked.iter().filter(|m| *m == "init_defaults_with_timeout").count(), 1, "{asked:?}");
+    assert!(!asked.iter().any(|m| m.starts_with("config_status")), "{asked:?}");
+    assert_eq!(unpaired_default_sites(GLUE), 0);
+    assert!(body(GLUE, "chain_configs").contains("self.ensure_eth_rpc(b)"));
+
+    let gated = GLUE.replacen(
+        "let applied = modules().eth_rpc_module.init_defaults_with_timeout(t);",
+        "let _ = modules().eth_rpc_module.config_status_with_timeout(t);\n        let applied = modules().eth_rpc_module.init_defaults_with_timeout(t);",
+        1,
+    );
+    assert_ne!(gated, GLUE, "the mutant applies");
+    assert!(eth_rpc_calls(&gated).iter().any(|m| m.starts_with("config_status")));
+    let unpaired = GLUE.replacen("self.ensure_eth_rpc(&b);\n        self.ensure_token_list(&b);", "self.ensure_token_list(&b);", 1);
+    assert_ne!(unpaired, GLUE, "the mutant applies");
+    assert_eq!(unpaired_default_sites(&unpaired), 1);
+    let skipped = GLUE.replacen("        self.ensure_eth_rpc(b);\n", "", 1);
+    assert_ne!(skipped, GLUE, "the mutant applies");
+    assert!(!body(&skipped, "chain_configs").contains("self.ensure_eth_rpc(b)"));
 }

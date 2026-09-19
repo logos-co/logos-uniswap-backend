@@ -99,6 +99,7 @@ include!(concat!(env!("CARGO_MANIFEST_DIR"), "/generated/provider_gen.rs"));
 
 #[derive(Default)]
 struct UniswapBackendImpl {
+    eth_rpc_settled: AtomicBool,
     token_list_settled: AtomicBool,
     feeds: Feeds,
 }
@@ -259,6 +260,20 @@ impl UniswapBackendImpl {
         });
     }
 
+    /// Have eth_rpc seed its default chains. No `config_status` gate: it fills only what is
+    /// absent and seeds a default chain at most once per device, so a store another app has
+    /// already written to still gets the defaults it lacks.
+    fn ensure_eth_rpc(&self, b: &Budget) {
+        if self.eth_rpc_settled.load(Ordering::Relaxed) {
+            return;
+        }
+        let Some(t) = b.take(INIT_BUDGET) else { return };
+        let applied = modules().eth_rpc_module.init_defaults_with_timeout(t);
+        if applied.map(|raw| depinit::reply_ok(&raw)).unwrap_or(false) {
+            self.eth_rpc_settled.store(true, Ordering::Relaxed);
+        }
+    }
+
     /// Ask token_list whether it holds a config and, only if it says it holds none, have it
     /// apply its own defaults: a device with no wallet on it still needs a catalogue.
     fn ensure_token_list(&self, b: &Budget) {
@@ -280,7 +295,9 @@ impl UniswapBackendImpl {
         }
     }
 
+    /// The chain registry, behind the lazy eth_rpc seeding retry.
     fn chain_configs(&self, b: &Budget) -> Result<(String, Vec<Value>), String> {
+        self.ensure_eth_rpc(b);
         let t = b.take(PROBE_BUDGET).ok_or("no time left to read the chain registry")?;
         let v = reply(modules().eth_rpc_module.list_chain_configs_with_timeout(t), "eth_rpc_module")?;
         let scope = v.get("scope").and_then(Value::as_str).unwrap_or("mainnets").to_string();
@@ -390,7 +407,9 @@ impl UniswapBackendImpl {
 
 impl UniswapBackendModule for UniswapBackendImpl {
     fn on_context_ready(&self, _ctx: &RustModuleContext) {
-        self.ensure_token_list(&Budget::new(STARTUP_BUDGET));
+        let b = Budget::new(STARTUP_BUDGET);
+        self.ensure_eth_rpc(&b);
+        self.ensure_token_list(&b);
         self.arm();
     }
 
@@ -422,6 +441,7 @@ impl UniswapBackendModule for UniswapBackendImpl {
     fn tokens(&self, chain_id: i64) -> String {
         self.arm();
         let b = Budget::new(TOKENS_BUDGET);
+        self.ensure_eth_rpc(&b);
         self.ensure_token_list(&b);
         match self.offered(chain_id, &b).and_then(|rows| self.assets(chain_id, &rows, &b)) {
             Ok(v) => v.to_string(),
@@ -431,6 +451,7 @@ impl UniswapBackendModule for UniswapBackendImpl {
 
     fn catalogue(&self, chain_id: i64, query: String, offset: i64, limit: i64) -> String {
         let b = Budget::new(TOKENS_BUDGET);
+        self.ensure_eth_rpc(&b);
         self.ensure_token_list(&b);
         let native = match self.assets(chain_id, &[], &b) {
             Ok(v) => rows_of(&v).into_iter().next().unwrap_or_default(),
