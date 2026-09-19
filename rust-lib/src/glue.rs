@@ -57,9 +57,11 @@ pub trait UniswapBackendModule: Send + Sync + 'static {
 
     /// Price a swap without side effects. `request_json`: `{ chainId, from, tokenIn, tokenOut,
     /// amountUnits | amountIn, decimalsIn?, decimalsOut?, symbolIn?, symbolOut?, slippageBps?,
-    /// deadlineMins?, tier?, recipient? }`; a token is an address, "ETH", or an offered symbol,
-    /// and missing decimals are looked up. The reply is uniswap_module's `build_swap` with the
-    /// display figures and `tx_sender_module`'s `prepare` under `fee`.
+    /// deadlineMins?, tier?, recipient?, maxFeePerGas?, maxPriorityFeePerGas?, gasLimits?,
+    /// nonce? }`; a token is an address, "ETH", or an offered symbol, and missing decimals are
+    /// looked up. The fee fields are the user's, in wei, relayed as given, `gasLimits` one per
+    /// call in build order. The reply is uniswap_module's `build_swap` with the display figures
+    /// and `tx_sender_module`'s `prepare` under `fee`.
     fn quote(&self, request_json: String) -> String;
 
     /// Build the swap afresh and ask the sender to make it: `{ ok, pending, requestId, handle,
@@ -387,14 +389,16 @@ impl UniswapBackendImpl {
         )
     }
 
-    /// The sender's request for `built`, bounded by what is left of `b`.
-    fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str, b: &Budget) -> Option<(Value, std::time::Duration)> {
-        let t = b.take(SENDER_BUDGET)?;
-        let mut req = app::sender_request(built, f, via, purpose);
+    /// The sender's request for `built`, bounded by what is left of `b`. `Ok(None)` is a
+    /// budget spent; `Err` is a request the user's own fields made impossible.
+    fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str, b: &Budget)
+        -> Result<Option<(Value, std::time::Duration)>, String> {
+        let mut req = app::sender_request(built, f, via, purpose)?;
+        let Some(t) = b.take(SENDER_BUDGET) else { return Ok(None) };
         if let Some(d) = callee_deadline(t) {
             req["deadlineMs"] = json!(d);
         }
-        Some((req, t))
+        Ok(Some((req, t)))
     }
 }
 
@@ -518,11 +522,12 @@ impl UniswapBackendModule for UniswapBackendImpl {
             Err(e) => return err(e),
         };
         let fee = match Self::sender_request(&built, &f, &caller_name(), "", &b) {
-            Some((req, t)) => match reply(modules().tx_sender_module.prepare_with_timeout(&req.to_string(), t), "tx_sender_module") {
+            Ok(Some((req, t))) => match reply(modules().tx_sender_module.prepare_with_timeout(&req.to_string(), t), "tx_sender_module") {
                 Ok(v) => v,
                 Err(e) => refusal(e),
             },
-            None => json!({ "ok": false, "error": "no time left to price the swap" }),
+            Ok(None) => json!({ "ok": false, "error": "no time left to price the swap" }),
+            Err(e) => refusal(e),
         };
         app::merged_quote(&built, &fee, &f).to_string()
     }
@@ -549,8 +554,10 @@ impl UniswapBackendModule for UniswapBackendImpl {
         };
         let via = caller_name();
         let purpose = app::swap_purpose(&f, &built, &via);
-        let Some((req, t)) = Self::sender_request(&built, &f, &via, &purpose, &b) else {
-            return err("no time left to request approval");
+        let (req, t) = match Self::sender_request(&built, &f, &via, &purpose, &b) {
+            Ok(Some(v)) => v,
+            Ok(None) => return err("no time left to request approval"),
+            Err(e) => return err(e),
         };
         // Deliberately no hash: nothing is signed or broadcast until a human approves.
         match reply(modules().tx_sender_module.send_with_timeout(&req.to_string(), t), "tx_sender_module") {

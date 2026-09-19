@@ -45,9 +45,12 @@ Swaps:
 
 - `quote(request)` — prices a swap without side effects. The request is the swap form:
   `{ chainId, from, tokenIn, tokenOut, amountUnits | amountIn, decimalsIn?, decimalsOut?,
-  symbolIn?, symbolOut?, slippageBps?, deadlineMins?, tier?, recipient? }`. A token is an
-  address, `ETH`, or an offered symbol; missing decimals are looked up and never assumed. The
-  reply is `uniswap_module`'s build with display figures and the sender's pricing under `fee`.
+  symbolIn?, symbolOut?, slippageBps?, deadlineMins?, tier?, recipient?, maxFeePerGas?,
+  maxPriorityFeePerGas?, gasLimits?, nonce? }`. A token is an address, `ETH`, or an offered
+  symbol; missing decimals are looked up and never assumed. The fee fields are the user's own,
+  in wei: they reach the sender as given, `gasLimits` one per call in build order (`null` leaves
+  a call estimated). The reply is `uniswap_module`'s build with display figures and the
+  sender's pricing under `fee`.
 - `swap(request)` — builds the swap afresh, tags every call, writes the purpose and asks the
   sender: `{ ok, pending, requestId, handle, purpose, amountOutMin, deadline }`.
 - `swap_status(request_id)` — the sender's `send_status` and its `final`. Polling is the
