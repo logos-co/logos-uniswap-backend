@@ -56,4 +56,4 @@ jobs:
             echo "$out" | grep -q "^$t: test$" || { echo "MISSING: $t"; exit 1; }
           done
           n=$(echo "$out" | grep -c ': test$')
-          echo "tests: $n"; [ "$n" -ge 33 ]
+          echo "tests: $n"; [ "$n" -ge 34 ]

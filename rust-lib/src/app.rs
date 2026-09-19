@@ -274,13 +274,15 @@ pub fn merged_quote(built: &Value, fee: &Value, f: &SwapForm) -> Value {
 }
 
 /// The status of a bundle from its legs. The worst leg wins: a swap whose approval landed and
-/// whose swap reverted is a failed swap, not a half-confirmed one.
+/// whose swap reverted is a failed swap, not a half-confirmed one. A replaced leg was never
+/// mined, so it decides the bundle only as its last leg, the swap itself, once nothing moves.
 pub fn bundle_status(legs: &[Value]) -> &'static str {
     let (mut failed, mut pending, mut stalled, mut blocked) = (false, false, false, false);
+    let replaced = legs.last().is_some_and(|r| str_of(r, "status") == "replaced");
     for r in legs {
         match str_of(r, "status") {
             "failed" => failed = true,
-            "confirmed" => {}
+            "confirmed" | "replaced" => {}
             _ => pending = true,
         }
         stalled |= r.get("stalled").and_then(Value::as_bool) == Some(true);
@@ -294,6 +296,8 @@ pub fn bundle_status(legs: &[Value]) -> &'static str {
         "stalled"
     } else if pending {
         "pending"
+    } else if replaced {
+        "replaced"
     } else {
         "confirmed"
     }
@@ -649,6 +653,21 @@ mod tests {
         assert_eq!(bundle_status(&[stalled.clone()]), "stalled");
         stalled["verificationBlocked"] = json!(true);
         assert_eq!(bundle_status(&[stalled]), "blocked");
+    }
+
+    #[test]
+    fn a_replaced_swap_is_replaced_and_a_replaced_approval_is_not_the_swap() {
+        let replaced = row("0x4", "r", 0, "replaced", "swap", APP, 4.0);
+        assert_eq!(bundle_status(&[replaced.clone()]), "replaced");
+        let approval_replaced = [row("0x5", "r", 0, "replaced", "approve", APP, 5.0),
+                                 row("0x6", "r", 1, "confirmed", "swap", APP, 6.0)];
+        assert_eq!(bundle_status(&approval_replaced), "confirmed", "the swap itself landed");
+        let still_moving = [row("0x7", "r", 0, "replaced", "approve", APP, 7.0),
+                            row("0x8", "r", 1, "pending", "swap", APP, 8.0)];
+        assert_eq!(bundle_status(&still_moving), "pending");
+        let reverted = [row("0x9", "r", 0, "replaced", "approve", APP, 9.0),
+                        row("0xa", "r", 1, "failed", "swap", APP, 10.0)];
+        assert_eq!(bundle_status(&reverted), "failed");
     }
 
     #[test]

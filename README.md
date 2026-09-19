@@ -58,7 +58,9 @@ Swaps:
   final only when it holds no such request. A sender that predates `final` is read off
   `status`: only `awaitingApproval` and `broadcasting` still move, and no refusal is final.
 - `cancel_swap(request_id)`, `swaps(address, chain_id)` — the app's swaps, newest first, one
-  entry per bundle with its legs.
+  entry per bundle with its legs. A bundle's `status` is its worst leg's: `failed`, `blocked`,
+  `stalled`, `pending`, then `replaced` when the swap leg itself was replaced (a replaced
+  approval is not the swap), else `confirmed`.
 
 Events: `networks_changed`, `tokens_changed`, `accounts_changed`, `swap_status_changed`,
 `swaps_changed`, relayed from the modules that own the facts.
