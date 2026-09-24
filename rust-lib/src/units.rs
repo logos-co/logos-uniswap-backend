@@ -59,6 +59,28 @@ pub fn compare_base(a: &str, b: &str) -> Ordering {
     x.len().cmp(&y.len()).then_with(|| x.cmp(y))
 }
 
+/// The sum of two base-unit amounts, added digit by digit so it is exact at any size. `None`
+/// when either is not digits.
+pub fn add_base(a: &str, b: &str) -> Option<String> {
+    let (a, b) = (a.trim(), b.trim());
+    if !is_digits(a) || !is_digits(b) {
+        return None;
+    }
+    let (mut x, mut y) = (a.bytes().rev(), b.bytes().rev());
+    let (mut out, mut carry) = (Vec::with_capacity(a.len().max(b.len()) + 1), 0u8);
+    loop {
+        let (p, q) = (x.next(), y.next());
+        if p.is_none() && q.is_none() && carry == 0 {
+            break;
+        }
+        let sum = p.map_or(0, |c| c - b'0') + q.map_or(0, |c| c - b'0') + carry;
+        out.push(b'0' + sum % 10);
+        carry = sum / 10;
+    }
+    out.reverse();
+    Some(strip_leading_zeros(std::str::from_utf8(&out).ok()?).to_string())
+}
+
 pub fn is_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit())
 }
@@ -146,6 +168,18 @@ mod tests {
         assert_eq!(compare_base("1999", "2000"), Ordering::Less);
         assert_eq!(compare_base("5000000000000", "5000000000001"), Ordering::Less);
         assert_eq!(compare_base("0", "000"), Ordering::Equal);
+    }
+
+    #[test]
+    fn amounts_add_exactly_past_any_integer_width() {
+        assert_eq!(add_base("999", "1").as_deref(), Some("1000"));
+        assert_eq!(add_base("0", "0").as_deref(), Some("0"));
+        assert_eq!(add_base("007", "3").as_deref(), Some("10"));
+        let big = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+        assert_eq!(add_base(big, "1").as_deref(),
+                   Some("115792089237316195423570985008687907853269984665640564039457584007913129639936"));
+        assert_eq!(add_base("1", "x"), None);
+        assert_eq!(add_base("", "1"), None);
     }
 
     #[test]
