@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use serde_json::{json, Value};
 
-use crate::units::{compare_base, from_base_units, from_base_units_exact, is_digits, rate_of, to_base_units};
+use crate::units::{add_base, compare_base, from_base_units, from_base_units_exact, is_digits, rate_of, to_base_units};
 
 /// How this app tags the calls it asks the sender to make, so it finds its rows in a history
 /// it shares with the wallet. Its own claim; who really asked is the sender's `origin`.
@@ -199,7 +199,7 @@ pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> 
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            let meta = json!({
+            let mut meta = json!({
                 "app": APP, "via": via, "kind": str_of(c, "kind"),
                 "tokenIn": f.token_in, "tokenOut": f.token_out,
                 "symbolIn": f.symbol_in, "symbolOut": f.symbol_out,
@@ -207,6 +207,10 @@ pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> 
                 "amountIn": f.amount_in, "amountOut": str_of(built, "amountOut"),
                 "amountOutMin": str_of(built, "amountOutMin"), "route": route,
             });
+            // Absent means the account itself, which is where `received` then looks.
+            if !f.recipient.is_empty() {
+                meta["recipient"] = json!(f.recipient);
+            }
             let mut call = json!({ "to": str_of(c, "to"), "value": str_of(c, "value"), "data": str_of(c, "data"),
                                    "label": str_of(c, "label"), "meta": meta });
             if let Some(Some(g)) = f.gas_limits.get(i) {
@@ -303,6 +307,41 @@ pub fn bundle_status(legs: &[Value]) -> &'static str {
     }
 }
 
+/// What a settled swap delivered, off its swap leg's decoded receipt logs: the ERC-20 Transfers
+/// of `tokenOut` to the recipient, or for ether out the EIP-7708 ether logs to it. `None` while
+/// the swap is unsettled and when no such log was decoded (ether before Glamsterdam, or a sender
+/// that predates those logs): an amount nobody measured is not shown as one.
+pub fn received(legs: &[Value], meta: &Value) -> Option<String> {
+    let leg = legs.iter().find(|r| r.get("meta").is_some_and(|m| str_of(m, "kind") == "swap"))?;
+    if str_of(leg, "status") != "confirmed" {
+        return None;
+    }
+    let account = str_of(leg, "from");
+    let recipient = match str_of(meta, "recipient") {
+        "" => account,
+        r => r,
+    };
+    let token_out = str_of(meta, "tokenOut");
+    if is_native(token_out) && recipient.eq_ignore_ascii_case(account) {
+        // The sender totals the ether that reached the account over every log, cap or not.
+        let total = str_of(leg, "nativeReceivedWei");
+        return is_digits(total).then(|| total.to_string());
+    }
+    let list = if is_native(token_out) { "nativeTransfers" } else { "transfers" };
+    // The sender caps each list; a sum over a cut list could be short, so it is not a sum.
+    if leg.get(&format!("{list}More")).and_then(Value::as_u64).is_some_and(|n| n > 0) {
+        return None;
+    }
+    let mut total: Option<String> = None;
+    for t in leg.get(list).and_then(Value::as_array).into_iter().flatten() {
+        let token = is_native(token_out) || str_of(t, "contract").eq_ignore_ascii_case(token_out);
+        if token && str_of(t, "to").eq_ignore_ascii_case(recipient) {
+            total = Some(add_base(total.as_deref().unwrap_or("0"), str_of(t, "amount"))?);
+        }
+    }
+    total
+}
+
 /// This app's swaps out of the sender's rows: the rows it tagged, grouped by bundle, newest
 /// first. A row with no request id is a bundle of its own, keyed by its hash.
 pub fn group_swaps(rows: &[Value], app: &str) -> Vec<Value> {
@@ -335,13 +374,23 @@ pub fn group_swaps(rows: &[Value], app: &str) -> Vec<Value> {
             }
             let newest = legs.iter().filter_map(|r| r.get("timestamp").and_then(Value::as_f64)).fold(0.0, f64::max);
             let first = legs.first().cloned().unwrap_or_default();
-            json!({
+            let got = received(&legs, &swap);
+            let mut g = json!({
                 "requestId": id, "status": bundle_status(&legs), "timestamp": newest,
                 "hashes": hashes, "swap": swap, "label": label,
                 "origin": str_of(&first, "origin"),
                 "via": first.get("meta").map(|m| str_of(m, "via")).unwrap_or(""),
                 "legs": legs,
-            })
+            });
+            if let Some(base) = got {
+                let decimals = g["swap"].get("decimalsOut").and_then(Value::as_u64).and_then(|d| u32::try_from(d).ok());
+                if let Some(d) = decimals {
+                    g["receivedDisplay"] = json!(from_base_units(&base, d).unwrap_or_default());
+                    g["receivedExact"] = json!(from_base_units_exact(&base, d).unwrap_or_default());
+                }
+                g["received"] = json!(base);
+            }
+            g
         })
         .collect();
     let ts = |g: &Value| g.get("timestamp").and_then(Value::as_f64).unwrap_or(0.0);
@@ -642,6 +691,93 @@ mod tests {
         assert_eq!(b1["status"], "confirmed");
         assert_eq!(b1["origin"], "host");
         assert_eq!(b1["via"], "uniswap_ui");
+    }
+
+    const ME: &str = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    const WETH: &str = "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
+
+    /// The confirmed swap leg of a bundle, as the sender returns it after reading its receipt.
+    fn settled(token_out: &str, extra: Value) -> Vec<Value> {
+        let mut swap = row("0xa1", "snd_1", 1, "confirmed", "swap", APP, 2.0);
+        swap["from"] = json!(ME);
+        swap["meta"]["tokenOut"] = json!(token_out);
+        for (k, v) in extra.as_object().unwrap() {
+            swap[k] = v.clone();
+        }
+        vec![row("0xa0", "snd_1", 0, "confirmed", "approve", APP, 1.0), swap]
+    }
+
+    /// Quoted and minimum are what was EXPECTED; the receipt says what arrived. A token comes
+    /// in as an ERC-20 Transfer to the account, and only transfers of the token bought count.
+    #[test]
+    fn a_settled_swap_reads_what_it_received_off_its_receipt() {
+        let legs = settled(WETH, json!({ "transfers": [
+            { "contract": USDC, "from": ME, "to": ROUTER, "amount": "1000000000" },
+            { "contract": WETH, "from": ROUTER, "to": ME.to_lowercase(), "amount": "333000000000000000" },
+            { "contract": WETH, "from": ROUTER, "to": ROUTER, "amount": "7" },
+            { "contract": USDC, "from": ROUTER, "to": ME, "amount": "1" }] }));
+        assert_eq!(received(&legs, &legs[1]["meta"]).as_deref(), Some("333000000000000000"),
+                   "the refund of the token sold is not what was bought");
+        let g = &group_swaps(&legs, APP)[0];
+        assert_eq!((g["received"].clone(), g["receivedDisplay"].clone(), g["receivedExact"].clone()),
+                   (json!("333000000000000000"), json!("0.333"), json!("0.333")));
+    }
+
+    /// EIP-7708: ether out arrives as the router's CALL to the account, which the sender now
+    /// decodes and totals. Before Glamsterdam no log says so, and nothing is claimed.
+    #[test]
+    fn ether_out_is_read_off_eip7708_logs_and_unmeasured_ether_claims_nothing() {
+        let legs = settled("ETH", json!({ "nativeReceivedWei": "333277787035494084" }));
+        let g = &group_swaps(&legs, APP)[0];
+        assert_eq!((g["received"].clone(), g["receivedDisplay"].clone()),
+                   (json!("333277787035494084"), json!("0.33327")));
+
+        let before = settled("ETH", json!({}));
+        assert!(group_swaps(&before, APP)[0].get("received").is_none(), "no log, no figure");
+
+        // A sender that predates EIP-7708 handling files the log as a "token" of 0xff…fe. It is
+        // not the token bought, so it is never read as one.
+        let legacy = settled(WETH, json!({ "transfers": [
+            { "contract": "0xfffffffffffffffffffffffffffffffffffffffe", "from": ROUTER, "to": ME,
+              "amount": "5" }] }));
+        assert_eq!(received(&legacy, &legacy[1]["meta"]), None);
+    }
+
+    /// A recipient other than the account is recorded with the call and read back from there:
+    /// its ether is in the transfer list, not in the account's own total.
+    #[test]
+    fn what_reached_another_recipient_is_summed_from_its_transfers() {
+        const THEM: &str = "0x0adBc7B2D1A2b7C8E9F0A1b2c3d4e5f60718D3A7";
+        let mut legs = settled("ETH", json!({ "nativeReceivedWei": "999", "nativeTransfers": [
+            { "from": WETH, "to": ROUTER, "amount": "5" },
+            { "from": ROUTER, "to": THEM, "amount": "3" },
+            { "from": ROUTER, "to": THEM.to_lowercase(), "amount": "2" }] }));
+        legs[1]["meta"]["recipient"] = json!(THEM);
+        assert_eq!(received(&legs, &legs[1]["meta"]).as_deref(), Some("5"));
+
+        let f = form(json!({ "recipient": THEM }));
+        let sr = sender_request(&built(), &f, "uniswap_ui", "P").unwrap();
+        assert_eq!(sr["calls"][1]["meta"]["recipient"], THEM);
+        let own = sender_request(&built(), &form(json!({})), "uniswap_ui", "P").unwrap();
+        assert!(own["calls"][1]["meta"].get("recipient").is_none(), "absent means the account");
+    }
+
+    #[test]
+    fn a_list_the_sender_cut_short_is_not_summed() {
+        let mut legs = settled(WETH, json!({ "transfersMore": 3, "transfers": [
+            { "contract": WETH, "from": ROUTER, "to": ME, "amount": "5" }] }));
+        assert_eq!(received(&legs, &legs[1]["meta"]), None, "three more transfers went unread");
+        legs[1]["transfersMore"] = json!(null);
+        assert_eq!(received(&legs, &legs[1]["meta"]).as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn an_unsettled_swap_has_received_nothing_yet() {
+        let mut legs = settled("ETH", json!({ "nativeReceivedWei": "5" }));
+        legs[1]["status"] = json!("pending");
+        assert_eq!(received(&legs, &legs[1]["meta"]), None);
+        legs[1]["status"] = json!("failed");
+        assert_eq!(received(&legs, &legs[1]["meta"]), None, "a reverted swap delivered nothing");
     }
 
     #[test]

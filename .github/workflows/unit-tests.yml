@@ -52,8 +52,9 @@ jobs:
                    eth_rpc_defaults_are_asked_for_without_a_gate \
                    token_list_defaults_are_asked_for_without_a_gate \
                    app::tests::only_the_end_of_a_swap_is_final \
-                   app::tests::a_sender_that_predates_final_is_read_the_way_it_behaves; do
+                   app::tests::a_sender_that_predates_final_is_read_the_way_it_behaves \
+                   app::tests::ether_out_is_read_off_eip7708_logs_and_unmeasured_ether_claims_nothing; do
             echo "$out" | grep -q "^$t: test$" || { echo "MISSING: $t"; exit 1; }
           done
           n=$(echo "$out" | grep -c ': test$')
-          echo "tests: $n"; [ "$n" -ge 34 ]
+          echo "tests: $n"; [ "$n" -ge 40 ]

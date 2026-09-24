@@ -60,7 +60,9 @@ Swaps:
 - `cancel_swap(request_id)`, `swaps(address, chain_id)` — the app's swaps, newest first, one
   entry per bundle with its legs. A bundle's `status` is its worst leg's: `failed`, `blocked`,
   `stalled`, `pending`, then `replaced` when the swap leg itself was replaced (a replaced
-  approval is not the swap), else `confirmed`.
+  approval is not the swap), else `confirmed`. A confirmed swap carries `received`
+  (`+Display`/`Exact`): what its receipt says reached the recipient — the ERC-20 Transfers of
+  the token bought, or for ether EIP-7708's ether logs. Absent when no such log was decoded.
 
 Events: `networks_changed`, `tokens_changed`, `accounts_changed`, `swap_status_changed`,
 `swaps_changed`, relayed from the modules that own the facts.
