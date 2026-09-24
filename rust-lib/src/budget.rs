@@ -24,13 +24,14 @@ pub const FEES_BUDGET: Duration = Duration::from_secs(5);
 pub const BALANCES_BUDGET: Duration = Duration::from_secs(17);
 pub const ASSETS_BUDGET: Duration = Duration::from_secs(15);
 
-/// One `build_swap`: uniswap_module gives its Multicall3 read fifteen seconds of its own.
-pub const BUILD_BUDGET: Duration = Duration::from_secs(16);
+/// One `build_swap`: uniswap_module gives its Multicall3 read 30 s and the winner's probe 8 s.
+/// Through the verified proxy a mainnet quote batch measured 18–29 s (2026-09-24).
+pub const BUILD_BUDGET: Duration = Duration::from_secs(40);
 /// One `prepare` or `send`: the sender's own cap, shrunk to what is left by `deadlineMs`.
 pub const SENDER_BUDGET: Duration = Duration::from_secs(18);
 /// A quote or a swap: the build, then the sender, as one allowance.
-pub const QUOTE_BUDGET: Duration = Duration::from_secs(34);
-pub const SWAP_BUDGET: Duration = Duration::from_secs(34);
+pub const QUOTE_BUDGET: Duration = Duration::from_secs(58);
+pub const SWAP_BUDGET: Duration = Duration::from_secs(60);
 /// One relayed `send_status`: the sender collects the signatures and broadcasts on this call.
 pub const STATUS_BUDGET: Duration = Duration::from_secs(18);
 /// The sender cancels locally, then tells the keystore within three seconds of its own.
@@ -40,7 +41,7 @@ pub const HISTORY_BUDGET: Duration = Duration::from_secs(12);
 
 /// What the view's transport waits for one call, and for a quote or a swap.
 pub const VIEW_CALL: Duration = Duration::from_secs(20);
-pub const VIEW_SWAP_CALL: Duration = Duration::from_secs(35);
+pub const VIEW_SWAP_CALL: Duration = Duration::from_secs(62);
 
 /// Below this a grant buys nothing, and the protocol refuses a sub-millisecond bound outright.
 pub const MIN_SLICE: Duration = Duration::from_millis(50);

@@ -93,9 +93,11 @@ logosctl call uniswap_backend swap_status <requestId>  # repeat until "final":tr
 
 ## Budgets
 
-Each entry point spends one allowance across all its calls. A quote or a swap gets 34 s: the
-build (uniswap_module's own read is 15 s) and then the sender, which is told what is left.
-The view waits 35 s for those two and 20 s for everything else.
+Each entry point spends one allowance across all its calls. A quote gets 58 s and a swap
+60 s: the build (40 s; uniswap_module reads for 30 s and probes the winner for 8 s) and then
+the sender, which is told what is left. The build is long for the verified proxy's sake: it
+fetches a proof for every slot a quote touches, and a mainnet quote batch measured 18–29 s.
+The view waits 62 s for those two and 20 s for everything else.
 
 ## Build and test
 
