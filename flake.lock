@@ -16963,11 +16963,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789863497,
-        "narHash": "sha256-0rGc+dp4dtx2GTMNF2I5zunfcjvg3RQleWecub2ATVM=",
+        "lastModified": 1790275292,
+        "narHash": "sha256-rYIPNZbpxmTHMy+ipIDtTw1Rf9ez1BJFTrtRq1Ga1Ng=",
         "owner": "logos-co",
         "repo": "logos-evm-uniswap-module",
-        "rev": "35f286b98cd08f1a9aff7eda8b55eb208a0841be",
+        "rev": "cc677c301f45a00a1baac0358082df1fb271a650",
         "type": "github"
       },
       "original": {
