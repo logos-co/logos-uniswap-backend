@@ -216,6 +216,10 @@ pub fn sender_request(built: &Value, f: &SwapForm, via: &str, purpose: &str) -> 
             if let Some(Some(g)) = f.gas_limits.get(i) {
                 call["gasLimit"] = json!(g);
             }
+            // fee_module reads it only where the approve before it cannot be modelled.
+            if let Some(h) = c.get("gasLimitHint").and_then(Value::as_u64).filter(|h| *h > 0) {
+                call["gasLimitFallback"] = json!(h.to_string());
+            }
             call
         })
         .collect();
@@ -588,6 +592,7 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert!(calls[0]["label"].as_str().unwrap().starts_with("Approve"), "in order");
         assert!(calls.iter().all(|c| c.get("gasLimit").is_none()), "the estimator prices every leg");
+        assert_eq!(calls[1]["gasLimitFallback"], "180000", "uniswap_module's hint, for when no override can be taken");
         let meta = &calls[1]["meta"];
         assert_eq!(meta["app"], APP);
         assert_eq!(meta["via"], "uniswap_ui");

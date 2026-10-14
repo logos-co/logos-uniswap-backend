@@ -93,11 +93,16 @@ logosctl call uniswap_backend swap_status <requestId>  # repeat until "final":tr
 
 ## Budgets
 
-Each entry point spends one allowance across all its calls. A quote gets 58 s and a swap
-60 s: the build (40 s; uniswap_module reads for 30 s and probes the winner for 8 s) and then
-the sender, which is told what is left. The build is long for the verified proxy's sake: it
-fetches a proof for every slot a quote touches, and a mainnet quote batch measured 18–29 s.
-The view waits 62 s for those two and 20 s for everything else.
+Each entry point spends one allowance across all its calls. A quote gets 77 s and a swap
+79 s: the build (40 s; uniswap_module reads for 30 s and probes the winner for 8 s) and then
+the sender (34 s, tx_sender's own 33 s), which is told what is left. Both are long for the
+verified proxy's sake: it fetches a proof for every slot a call touches. A mainnet quote
+batch measured 18–29 s, and one swap estimate 4.6 s. The view waits 82 s for those two and
+20 s for everything else.
+
+Each call goes to the sender with uniswap_module's `gasLimitHint` as `gasLimitFallback`.
+fee_module uses it only for a swap behind its approve on a route that cannot take a state
+override (the verified proxy); everywhere else the swap is estimated with the approve applied.
 
 ## Build and test
 

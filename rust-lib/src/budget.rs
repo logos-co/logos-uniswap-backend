@@ -27,11 +27,12 @@ pub const ASSETS_BUDGET: Duration = Duration::from_secs(15);
 /// One `build_swap`: uniswap_module gives its Multicall3 read 30 s and the winner's probe 8 s.
 /// Through the verified proxy a mainnet quote batch measured 18–29 s (2026-09-24).
 pub const BUILD_BUDGET: Duration = Duration::from_secs(40);
-/// One `prepare` or `send`: the sender's own cap, shrunk to what is left by `deadlineMs`.
-pub const SENDER_BUDGET: Duration = Duration::from_secs(18);
-/// A quote or a swap: the build, then the sender, as one allowance.
-pub const QUOTE_BUDGET: Duration = Duration::from_secs(58);
-pub const SWAP_BUDGET: Duration = Duration::from_secs(60);
+/// One `prepare` or `send`: tx_sender's own 33 s cap plus the margin `callee_deadline` takes,
+/// shrunk to what is left by `deadlineMs`.
+pub const SENDER_BUDGET: Duration = Duration::from_secs(34);
+/// A quote or a swap: the token lookups, the build, then the sender, as one allowance.
+pub const QUOTE_BUDGET: Duration = Duration::from_secs(77);
+pub const SWAP_BUDGET: Duration = Duration::from_secs(79);
 /// One relayed `send_status`: the sender collects the signatures and broadcasts on this call.
 pub const STATUS_BUDGET: Duration = Duration::from_secs(18);
 /// The sender cancels locally, then tells the keystore within three seconds of its own.
@@ -41,7 +42,7 @@ pub const HISTORY_BUDGET: Duration = Duration::from_secs(12);
 
 /// What the view's transport waits for one call, and for a quote or a swap.
 pub const VIEW_CALL: Duration = Duration::from_secs(20);
-pub const VIEW_SWAP_CALL: Duration = Duration::from_secs(62);
+pub const VIEW_SWAP_CALL: Duration = Duration::from_secs(82);
 
 /// Below this a grant buys nothing, and the protocol refuses a sub-millisecond bound outright.
 pub const MIN_SLICE: Duration = Duration::from_millis(50);
@@ -97,7 +98,8 @@ mod tests {
         let left = QUOTE_BUDGET - BUILD_BUDGET;
         assert!(left >= SENDER_BUDGET, "a quote prices even after the slowest build");
         let left = SWAP_BUDGET - PROBE_BUDGET - BUILD_BUDGET;
-        assert!(callee_deadline(slice(SWAP_BUDGET, SWAP_BUDGET - left, SENDER_BUDGET).unwrap()).unwrap() > 10_000);
+        assert!(left >= SENDER_BUDGET, "a swap still requests approval after the slowest build");
+        assert!(callee_deadline(SENDER_BUDGET).unwrap() >= 33_000, "tx_sender's own 33 s fits");
     }
 
     #[test]
