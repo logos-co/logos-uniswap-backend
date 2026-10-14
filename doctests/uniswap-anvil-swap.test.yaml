@@ -53,11 +53,11 @@ sections:
         expect_contains:
           - "cast"
 
-  - title: "Build the eleven modules"
+  - title: "Build the twelve modules"
     step: true
     text: |
       `uniswap_backend` and everything it composes: `uniswap_module` and `tx_sender_module`,
-      the providers under them — `keystore_module`, `eth_rpc_module`, `fee_module` —
+      the providers under them — `keystore_module`, `signer_manager_module`, `eth_rpc_module`, `fee_module` —
       `token_list_module` and `evm_assets_module`; then the two headless surfaces:
       `evm_keystore_cli`, the custodian that imports the key, and `evm_signer_cli`, the
       approver.
@@ -75,22 +75,24 @@ sections:
           nix build 'github:logos-co/logos-evm-uniswap-module#install' --out-link ./result-uniswap
           nix build 'github:logos-co/logos-evm-tx-sender-module#install' --out-link ./result-sender
           nix build 'github:logos-co/logos-evm-assets-module#install' --out-link ./result-assets
-      - title: "Build the three providers and the token list"
+      - title: "Build the providers and the token list"
         run: |
           set -e
-          nix build "github:logos-co/logos-evm-keystore-module#install" --out-link ./result-keystore
+          nix build "github:logos-co/logos-evm-keystore-module/e4c6fcd39411f0ed52083f0a7fb2701e742f81f1#install" --out-link ./result-keystore
+          nix build "github:logos-co/logos-signer-manager-module/67859da29c14e1ffe1da306e0c31fdafb33a0a02#install" --out-link ./result-manager
           nix build "github:logos-co/logos-evm-eth-rpc-module#install" --out-link ./result-rpc
           nix build "github:logos-co/logos-evm-fee-module#install" --out-link ./result-fee
           nix build "github:logos-co/logos-evm-token-list-module#install" --out-link ./result-tl
         code_block: |
           nix build 'github:logos-co/logos-evm-keystore-module#install' --out-link ./result-keystore
+          nix build 'github:logos-co/logos-signer-manager-module#install' --out-link ./result-manager
           nix build 'github:logos-co/logos-evm-eth-rpc-module#install' --out-link ./result-rpc
           nix build 'github:logos-co/logos-evm-fee-module#install' --out-link ./result-fee
           nix build 'github:logos-co/logos-evm-token-list-module#install' --out-link ./result-tl
       - title: "Build the two headless surfaces"
         run: |
           set -e
-          nix build "github:logos-co/logos-evm-signer-cli#install" --out-link ./result-signer
+          nix build "github:logos-co/logos-evm-signer-cli/5b69f375b2295e0d331ce8d65e2bd881b605f072#install" --out-link ./result-signer
           nix build "github:logos-co/logos-evm-keystore-cli#install" --out-link ./result-kcli
         code_block: |
           nix build 'github:logos-co/logos-evm-signer-cli#install' --out-link ./result-signer
@@ -99,7 +101,7 @@ sections:
         run: |
           mkdir -p session/modules
           cp -RL ./logos/modules/. ./session/modules/
-          for r in result-keystore result-rpc result-fee result-tl result-assets result-uniswap result-sender result-backend result-signer result-kcli; do
+          for r in result-keystore result-manager result-rpc result-fee result-tl result-assets result-uniswap result-sender result-backend result-signer result-kcli; do
             cp -RL ./$r/modules/. ./session/modules/
           done
           chmod -R u+w session/modules
@@ -115,6 +117,7 @@ sections:
           - "evm_assets_module"
           - "tx_sender_module"
           - "keystore_module"
+          - "signer_manager_module"
           - "evm_signer_cli"
           - "evm_keystore_cli"
 
@@ -143,16 +146,16 @@ sections:
           `evm_signer_cli` must be up **before** the first swap: an approval request nobody
           claims is swept after 60 seconds.
         run: |
-          for m in keystore_module eth_rpc_module fee_module token_list_module evm_assets_module uniswap_module tx_sender_module uniswap_backend evm_signer_cli evm_keystore_cli; do
+          for m in keystore_module signer_manager_module eth_rpc_module fee_module token_list_module evm_assets_module uniswap_module tx_sender_module uniswap_backend evm_signer_cli evm_keystore_cli; do
             ./logos/bin/logosctl --config-dir ./session module load $m || exit 1
           done
         code_block: |
-          for m in keystore_module eth_rpc_module fee_module token_list_module evm_assets_module \
+          for m in keystore_module signer_manager_module eth_rpc_module fee_module token_list_module evm_assets_module \
                    uniswap_module tx_sender_module uniswap_backend evm_signer_cli evm_keystore_cli; do
             logosctl module load $m
           done
       - run: "sleep 2"
-      - title: "All ten are up"
+      - title: "All eleven are up"
         run: "./logos/bin/logosctl --config-dir ./session daemon status --json"
         code_block: "logosctl daemon status --json"
         expect_contains:
