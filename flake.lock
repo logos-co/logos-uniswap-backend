@@ -177,11 +177,11 @@
         "verified_proxy_module": "verified_proxy_module"
       },
       "locked": {
-        "lastModified": 1790274559,
-        "narHash": "sha256-Iefdc4HGccWqMhI7FnuvyxWYlU3E35bzDjuaSs3WhlA=",
+        "lastModified": 1792021185,
+        "narHash": "sha256-Aju5JRtpDyQA7vbXzF6lAGwEf3fLkz9amSlt/BgHXc0=",
         "owner": "logos-co",
         "repo": "logos-evm-eth-rpc-module",
-        "rev": "42cc465e0cbd748117a0af0cf983404348683335",
+        "rev": "0ffe710661b193a116a924c42bb53ee24620a033",
         "type": "github"
       },
       "original": {
@@ -223,11 +223,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789863493,
-        "narHash": "sha256-OaEz3UGNNSyN1VDtus1KRzRbM5ucxBugy5NnOwC0lvk=",
+        "lastModified": 1792021251,
+        "narHash": "sha256-K5JEpl77rrObYbIhJ3ictRdeADp8Yflk1MDFs8ugT7w=",
         "owner": "logos-co",
         "repo": "logos-evm-fee-module",
-        "rev": "5bf49b768cf178d2e8c58267f17822060f813fbf",
+        "rev": "11bab258b4da4edaeebe59cc8b253d6b20844ff9",
         "type": "github"
       },
       "original": {
@@ -243,11 +243,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789860999,
-        "narHash": "sha256-mXURRRei1EVaT5eYhgaL1ycuWfFRvVBDJ1simYRC3Oo=",
+        "lastModified": 1792004202,
+        "narHash": "sha256-PUBaws3QZ3RA5LxLJmQox/O6PKV+7RS1vVJ9F80dWDw=",
         "owner": "logos-co",
         "repo": "logos-evm-keystore-module",
-        "rev": "2318c679e2b7176967bd45052f3d64b2a8b06931",
+        "rev": "40633a919d0299eca5c4511971191c8a3dd173c4",
         "type": "github"
       },
       "original": {
@@ -10089,6 +10089,23 @@
         "type": "github"
       }
     },
+    "logos-signer-interface": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791601039,
+        "narHash": "sha256-VQjc0vyzqs11hVEObM3mtNrydDYP8zDke0+PFtL6AT0=",
+        "owner": "logos-co",
+        "repo": "logos-signer-interface",
+        "rev": "d2f95e01b8c2aa1c1e1ed2c7cf18e7963a685d02",
+        "type": "github"
+      },
+      "original": {
+        "owner": "logos-co",
+        "repo": "logos-signer-interface",
+        "rev": "d2f95e01b8c2aa1c1e1ed2c7cf18e7963a685d02",
+        "type": "github"
+      }
+    },
     "logos-standalone-app": {
       "inputs": {
         "logos-cpp-sdk": "logos-cpp-sdk_2",
@@ -16904,6 +16921,32 @@
         "type": "github"
       }
     },
+    "signer_manager_module": {
+      "inputs": {
+        "keystore_module": [
+          "keystore_module"
+        ],
+        "logos-module-builder": [
+          "tx_sender_module",
+          "logos-module-builder"
+        ],
+        "logos-signer-interface": "logos-signer-interface"
+      },
+      "locked": {
+        "lastModified": 1791604694,
+        "narHash": "sha256-HsE503IEkLVopw+1I46Ej23SoPNE0pTY8JHSHadPriM=",
+        "owner": "logos-co",
+        "repo": "logos-signer-manager-module",
+        "rev": "67859da29c14e1ffe1da306e0c31fdafb33a0a02",
+        "type": "github"
+      },
+      "original": {
+        "owner": "logos-co",
+        "repo": "logos-signer-manager-module",
+        "rev": "67859da29c14e1ffe1da306e0c31fdafb33a0a02",
+        "type": "github"
+      }
+    },
     "token_list_module": {
       "inputs": {
         "logos-module-builder": [
@@ -16932,19 +16975,17 @@
         "fee_module": [
           "fee_module"
         ],
-        "keystore_module": [
-          "keystore_module"
-        ],
         "logos-module-builder": [
           "logos-module-builder"
-        ]
+        ],
+        "signer_manager_module": "signer_manager_module"
       },
       "locked": {
-        "lastModified": 1790268849,
-        "narHash": "sha256-xHMXRHhnv+3EkzWtkZL3do5FG7IDQtUtCgpe5e26SgE=",
+        "lastModified": 1792021283,
+        "narHash": "sha256-J9z8byhJioyZnK0Gh8OhKw45AncmX7Au8GryqGaliAk=",
         "owner": "logos-co",
         "repo": "logos-evm-tx-sender-module",
-        "rev": "7cd2fead60a78ac9ac8a4337fd9f01e1ab5515e2",
+        "rev": "b46414384c3e1a9c631642163d52df62e8f2cce3",
         "type": "github"
       },
       "original": {

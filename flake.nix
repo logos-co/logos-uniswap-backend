@@ -32,7 +32,7 @@
       inputs.logos-module-builder.follows = "logos-module-builder";
       inputs.eth_rpc_module.follows = "eth_rpc_module";
       inputs.fee_module.follows = "fee_module";
-      inputs.keystore_module.follows = "keystore_module";
+      inputs.signer_manager_module.inputs.keystore_module.follows = "keystore_module";
     };
     uniswap_module = {
       url = "github:logos-co/logos-evm-uniswap-module";
