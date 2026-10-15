@@ -167,13 +167,20 @@ sections:
   - title: "Configure"
     step: true
     steps:
-      - title: "Name the two roles"
+      - title: "Name the roles"
+        text: |
+          The keystore signs only for its configured **manager**; the manager admits approvals
+          only from a configured **approver** and asks its configured **signers**.
         run: |
-          ./logos/bin/logosctl --config-dir ./session call keystore_module configure '{"approvers":["evm_signer_ui","evm_signer_cli"],"custodians":["evm_keystore_ui","evm_keystore_cli"]}' --human
+          ./logos/bin/logosctl --config-dir ./session call keystore_module configure '{"custodians":["evm_keystore_ui","evm_keystore_cli"],"managers":["signer_manager_module"]}' --human
+          ./logos/bin/logosctl --config-dir ./session call signer_manager_module configure '{"approvers":["evm_signer_ui","evm_signer_cli"],"custodians":["evm_keystore_ui"],"signers":["keystore_module"]}' --human
         code_block: |
-          logosctl call keystore_module configure '{"approvers":["evm_signer_ui","evm_signer_cli"],"custodians":["evm_keystore_ui","evm_keystore_cli"]}'
+          logosctl call keystore_module configure '{"custodians":["evm_keystore_ui","evm_keystore_cli"],"managers":["signer_manager_module"]}'
+          logosctl call signer_manager_module configure '{"approvers":["evm_signer_ui","evm_signer_cli"],"custodians":["evm_keystore_ui"],"signers":["keystore_module"]}'
         expect_contains:
-          - '"ok":true'
+          - '"evm_keystore_cli"'
+          - '"evm_signer_cli"'
+          - '"signers":["keystore_module"]'
       - title: "Point eth_rpc at Anvil"
         run: |
           ./logos/bin/logosctl --config-dir ./session call eth_rpc_module set_chain_config 31337 '{"endpoint":"http://127.0.0.1:8545"}' --human
@@ -410,7 +417,7 @@ sections:
         code_block: "logosctl call uniswap_backend swap @swap.json"
         expect_contains:
           - '"pending":true'
-          - '"requestId":"snd_ksh_'
+          - '"requestId":"snd_smh_'
           - '"purpose":"Swap 1000 TKN for at least 0.0994005994005994 ETH on Uniswap, via host"'
       - run: "sleep 3"
       - title: "The prompt names both legs, and who asked"
