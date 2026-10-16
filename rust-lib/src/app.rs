@@ -490,6 +490,15 @@ pub fn provider_offset(native_matches: bool, offset: i64) -> i64 {
 }
 
 /// token_list's page with the native row merged in, counts included.
+/// The signer manager's roster as the accounts a swap may come from: every EVM account any
+/// signer holds, device accounts included, and the entries themselves for the account picker.
+pub fn roster_accounts(roster: &Value) -> Option<(Value, Value)> {
+    let entries: Vec<&Value> =
+        roster.get("accounts")?.as_array()?.iter().filter(|a| a["family"] == "evm").collect();
+    let addresses: Vec<&Value> = entries.iter().filter_map(|e| e.get("address").filter(|a| a.is_string())).collect();
+    Some((json!(addresses), json!(entries)))
+}
+
 pub fn merge_native_page(native: &Value, native_matches: bool, mut page: Value, offset: i64, limit: i64) -> Value {
     let offset = usize::try_from(offset).unwrap_or(0);
     let provider_total = page.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
@@ -888,5 +897,18 @@ mod tests {
         let later = merge_native_page(&native, true, json!({ "total": 3, "tokens": [{ "symbol": "C" }] }), 3, 3);
         assert_eq!(later["tokens"][0]["symbol"], "C");
         assert_eq!(later["hasMore"], false);
+    }
+
+    #[test]
+    fn the_roster_offers_every_evm_account_any_signer_holds() {
+        let card = json!({ "key": "0xabc", "family": "evm", "address": "0xAbC",
+                           "holders": [{ "signer": "keycard_shell_module", "requestKinds": ["evm_transaction"] }] });
+        let roster = json!({ "ok": true, "accounts": [
+            card.clone(), { "key": "btc_1", "family": "bitcoin", "chain": "test", "holders": [] }
+        ] });
+        let (addresses, entries) = roster_accounts(&roster).unwrap();
+        assert_eq!(addresses, json!(["0xAbC"]), "a device-held account too, and no Bitcoin wallet");
+        assert_eq!(entries, json!([card]), "entries pass on as they are");
+        assert_eq!(roster_accounts(&json!({ "ok": true })), None);
     }
 }

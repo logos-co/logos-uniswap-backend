@@ -11,7 +11,8 @@ It composes reusable EVM modules and owns only the Uniswap app's rules:
 | Chain registry, scope and verified-proxy verdicts | `eth_rpc_module` |
 | Token catalogue and the offered set | `token_list_module` |
 | Asset rows, balances and exact units | `evm_assets_module` |
-| Accounts and their names (read-only) | `keystore_module` |
+| Every account any signer holds, with its signers (read-only) | `signer_manager_module` |
+| Account names, kept for one release (read-only) | `keystore_module` |
 | Fee tiers | `fee_module` |
 | Uniswap deployments, quotes and the calls that make a swap | `uniswap_module` |
 | Nonces, the one approval, broadcast and history | `tx_sender_module` |
@@ -38,8 +39,10 @@ Reads:
   offered tokens; the paged picker with the native row first.
 - `balances(chain_id, address, tokens_json)` — the native coin, the offered tokens, and any
   token rows the caller adds.
-- `fee_tiers(chain_id)`, `accounts()` — relayed; `accounts` joins the keystore's accounts,
-  names and wallets.
+- `fee_tiers(chain_id)`, `accounts()` — relayed. `accounts` is every EVM account any signer
+  holds, device accounts included, from the signer manager's roster, with the roster's
+  entries under `roster` for the account picker. The keystore's names and wallets come
+  beside them for one release. With no roster, it is the keystore's accounts, as before.
 
 Swaps:
 
@@ -114,4 +117,5 @@ nix run github:logos-co/logos-doctest -- run doctests/uniswap-anvil-swap.test.ya
 
 `rust-lib/src/app.rs` holds every rule and is tested there; `rust-lib/tests/glue_shape.rs`
 reads `glue.rs` as text and pins that every call is bounded, the keystore client only reads,
-money leaves through one sender call, and the purpose is composed in `app.rs` alone.
+the signer manager's only reads the roster, money leaves through one sender call, and the
+purpose is composed in `app.rs` alone.
