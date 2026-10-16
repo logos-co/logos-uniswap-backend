@@ -15,6 +15,7 @@
     { "name": "evm_assets_module", "version": "~0.1.0" },
     { "name": "fee_module", "version": "~0.1.0" },
     { "name": "keystore_module", "version": "~0.1.0" },
+    { "name": "signer_manager_module", "version": "~0.1.0" },
     { "name": "tx_sender_module", "version": "~0.1.0" },
     { "name": "uniswap_module", "version": "~0.1.0" }
   ],

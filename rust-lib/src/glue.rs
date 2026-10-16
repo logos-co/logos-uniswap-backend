@@ -50,9 +50,11 @@ pub trait UniswapBackendModule: Send + Sync + 'static {
     /// fee_module's tiers for `chain_id`, relayed verbatim.
     fn fee_tiers(&self, chain_id: i64) -> String;
 
-    /// The keystore's accounts, their names and the wallets they were derived under, in one
-    /// reply: `{ ok, accounts, labels?, wallets? }`. Read-only: this module can never create,
-    /// import or sign.
+    /// Every EVM account any signer holds, from the signer manager's roster, device accounts
+    /// included: `{ ok, accounts, roster?, labels?, wallets? }`. `roster` is the entries as they
+    /// are, each with every signer holding it, for the account picker. `labels` and `wallets`
+    /// are the keystore's, kept for one release. With no roster it is the keystore's accounts,
+    /// as before. Read-only: this module can never create, import or sign.
     fn accounts(&self) -> String;
 
     /// Price a swap without side effects. `request_json`: `{ chainId, from, tokenIn, tokenOut,
@@ -90,7 +92,8 @@ pub trait UniswapBackendModuleEvents {
     fn networks_changed(&self, chain_id: i64);
     /// The tokens offered on `chain_id`, or its native coin's metadata, moved.
     fn tokens_changed(&self, chain_id: i64);
-    /// The keystore's accounts moved. `count` is advisory; re-read `accounts`.
+    /// The keystore's or a signer's accounts moved, or a device was plugged in or out. `count`
+    /// is advisory; re-read `accounts`.
     fn accounts_changed(&self, count: i64);
     /// A swap changed state.
     fn swap_status_changed(&self, request_id: String);
@@ -116,6 +119,7 @@ struct Feeds {
     scope: Arc<AtomicBool>,
     tokens: Arc<AtomicBool>,
     accounts: Arc<AtomicBool>,
+    signers: Arc<AtomicBool>,
     sends: Arc<AtomicBool>,
     txs: Arc<AtomicBool>,
     rows: Arc<AtomicBool>,
@@ -235,6 +239,16 @@ impl UniswapBackendImpl {
             emit_accounts_changed(-1);
             for ev in sub {
                 let count = keystore_module::KeystoreModuleClient::decode_accounts_changed(&ev)
+                    .map(|e| e.count)
+                    .unwrap_or(-1);
+                emit_accounts_changed(count);
+            }
+        });
+        // A device plugged in or out, or a signer's accounts moved: the roster changed too.
+        feed(&f.signers, || modules().signer_manager_module.on_accounts_changed().ok(), |sub| {
+            emit_accounts_changed(-1);
+            for ev in sub {
+                let count = signer_manager_module::SignerManagerModuleClient::decode_accounts_changed(&ev)
                     .map(|e| e.count)
                     .unwrap_or(-1);
                 emit_accounts_changed(count);
@@ -492,11 +506,21 @@ impl UniswapBackendModule for UniswapBackendImpl {
         self.arm();
         let b = Budget::new(ACCOUNTS_BUDGET);
         let Some(t) = b.take(LOCAL_BUDGET) else { return err("no time left to read the accounts") };
-        let accounts = match reply(modules().keystore_module.list_accounts_with_timeout(t), "keystore_module") {
-            Ok(v) => v.get("accounts").cloned().unwrap_or_else(|| json!([])),
-            Err(e) => return err(e),
+        // The roster first: every account any signer holds. The keystore's own list when the
+        // manager can't answer, as before it existed.
+        let roster = reply(modules().signer_manager_module.roster_with_timeout(t), "signer_manager_module")
+            .ok()
+            .and_then(|v| app::roster_accounts(&v));
+        let mut out = match roster {
+            Some((accounts, entries)) => json!({ "ok": true, "accounts": accounts, "roster": entries }),
+            None => {
+                let Some(t) = b.take(LOCAL_BUDGET) else { return err("no time left to read the accounts") };
+                match reply(modules().keystore_module.list_accounts_with_timeout(t), "keystore_module") {
+                    Ok(v) => json!({ "ok": true, "accounts": v.get("accounts").cloned().unwrap_or_else(|| json!([])) }),
+                    Err(e) => return err(e),
+                }
+            }
         };
-        let mut out = json!({ "ok": true, "accounts": accounts });
         // A name is a courtesy: an account list without one is still the answer.
         if let Some(t) = b.take(LOCAL_BUDGET) {
             if let Ok(v) = reply(modules().keystore_module.get_labels_with_timeout(t), "keystore_module") {

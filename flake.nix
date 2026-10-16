@@ -27,12 +27,18 @@
       url = "github:logos-co/logos-evm-keystore-module";
       inputs.logos-module-builder.follows = "logos-module-builder";
     };
+    # The roster: each account once, with every signer holding it, device accounts included.
+    signer_manager_module = {
+      url = "github:logos-co/logos-signer-manager-module";
+      inputs.logos-module-builder.follows = "logos-module-builder";
+      inputs.keystore_module.follows = "keystore_module";
+    };
     tx_sender_module = {
       url = "github:logos-co/logos-evm-tx-sender-module";
       inputs.logos-module-builder.follows = "logos-module-builder";
       inputs.eth_rpc_module.follows = "eth_rpc_module";
       inputs.fee_module.follows = "fee_module";
-      inputs.signer_manager_module.inputs.keystore_module.follows = "keystore_module";
+      inputs.signer_manager_module.follows = "signer_manager_module";
     };
     uniswap_module = {
       url = "github:logos-co/logos-evm-uniswap-module";

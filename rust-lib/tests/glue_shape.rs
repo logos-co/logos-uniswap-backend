@@ -129,6 +129,19 @@ fn the_keystore_client_only_reads() {
 }
 
 #[test]
+fn the_signer_manager_client_only_reads_the_roster() {
+    let sorted = |src: &str| {
+        let mut m = calls_on(src, "signer_manager_module");
+        m.sort();
+        m
+    };
+    assert_eq!(sorted(GLUE), vec!["on_accounts_changed", "roster_with_timeout"]);
+    let mutant = GLUE.replacen("signer_manager_module.roster_with_timeout(t)", "signer_manager_module.approve_with_timeout(t)", 1);
+    assert_ne!(mutant, GLUE, "the mutant applies");
+    assert_eq!(sorted(&mutant), vec!["approve_with_timeout", "on_accounts_changed"]);
+}
+
+#[test]
 fn money_leaves_through_one_sender_call() {
     assert_eq!(send_sites(GLUE), 1);
     let mutant = GLUE.replacen("tx_sender_module.prepare_with_timeout(", "tx_sender_module.send_with_timeout(", 1);
