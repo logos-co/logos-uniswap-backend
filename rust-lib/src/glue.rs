@@ -51,10 +51,12 @@ pub trait UniswapBackendModule: Send + Sync + 'static {
     fn fee_tiers(&self, chain_id: i64) -> String;
 
     /// Every EVM account any signer holds, from the signer manager's roster, device accounts
-    /// included: `{ ok, accounts, roster?, labels?, wallets? }`. `roster` is the entries as they
-    /// are, each with every signer holding it, for the account picker. `labels` and `wallets`
-    /// are the keystore's, kept for one release. With no roster it is the keystore's accounts,
-    /// as before. Read-only: this module can never create, import or sign.
+    /// included: `{ ok, accounts, roster?, labels?, wallets?, signerWallets? }`. `roster` is the
+    /// entries as they are, each with every signer holding it, for the account picker. `labels`
+    /// and `wallets` are the keystore's, kept for one release. `signerWallets` is the manager's
+    /// wallets by public name (`seed`, `name`, `locked`, `kinds`): a locked one's accounts aren't
+    /// in the roster until the person unlocks it in the Signer app. With no roster it is the
+    /// keystore's accounts, as before. Read-only: this module can never create, import or sign.
     fn accounts(&self) -> String;
 
     /// Price a swap without side effects. `request_json`: `{ chainId, from, tokenIn, tokenOut,
@@ -530,6 +532,14 @@ impl UniswapBackendModule for UniswapBackendImpl {
         if let Some(t) = b.take(LOCAL_BUDGET) {
             if let Ok(v) = reply(modules().keystore_module.get_account_wallets_with_timeout(t), "keystore_module") {
                 out["wallets"] = v.get("wallets").cloned().unwrap_or_else(|| json!({}));
+            }
+        }
+        if let Some(t) = b.take(LOCAL_BUDGET) {
+            if let Ok(v) = reply(modules().signer_manager_module.wallets_with_timeout(t), "signer_manager_module") {
+                let rows: Vec<Value> = v["wallets"].as_array().cloned().unwrap_or_default().iter()
+                    .map(|w| json!({ "seed": w["seed"], "name": w["name"], "locked": w["locked"], "kinds": w["kinds"] }))
+                    .collect();
+                out["signerWallets"] = json!(rows);
             }
         }
         out.to_string()
