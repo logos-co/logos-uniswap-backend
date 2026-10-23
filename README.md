@@ -70,7 +70,8 @@ Swaps:
   the token bought, or for ether EIP-7708's ether logs. Absent when no such log was decoded.
 
 Events: `networks_changed`, `tokens_changed`, `accounts_changed`, `swap_status_changed`,
-`swaps_changed`, relayed from the modules that own the facts.
+`swaps_changed`, relayed from the modules that own the facts. `accounts_changed` also fires when
+a wallet unlocks or locks in the Signer app, since `signerWallets` moved.
 
 ## Who asked
 

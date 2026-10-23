@@ -122,6 +122,8 @@ struct Feeds {
     tokens: Arc<AtomicBool>,
     accounts: Arc<AtomicBool>,
     signers: Arc<AtomicBool>,
+    unlocked: Arc<AtomicBool>,
+    locked: Arc<AtomicBool>,
     sends: Arc<AtomicBool>,
     txs: Arc<AtomicBool>,
     rows: Arc<AtomicBool>,
@@ -254,6 +256,17 @@ impl UniswapBackendImpl {
                     .map(|e| e.count)
                     .unwrap_or(-1);
                 emit_accounts_changed(count);
+            }
+        });
+        // A wallet unlocked or locked in the Signer app: `signerWallets` in the accounts reply moved.
+        feed(&f.unlocked, || modules().signer_manager_module.on_wallets_changed().ok(), |sub| {
+            for _ in sub {
+                emit_accounts_changed(-1);
+            }
+        });
+        feed(&f.locked, || modules().signer_manager_module.on_wallets_locked().ok(), |sub| {
+            for _ in sub {
+                emit_accounts_changed(-1);
             }
         });
         feed(&f.sends, || modules().tx_sender_module.on_send_status_changed().ok(), |sub| {

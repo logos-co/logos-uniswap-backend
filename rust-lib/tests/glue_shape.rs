@@ -135,10 +135,10 @@ fn the_signer_manager_client_only_reads_the_roster_and_the_wallets() {
         m.sort();
         m
     };
-    assert_eq!(sorted(GLUE), vec!["on_accounts_changed", "roster_with_timeout", "wallets_with_timeout"]);
+    assert_eq!(sorted(GLUE), vec!["on_accounts_changed", "on_wallets_changed", "on_wallets_locked", "roster_with_timeout", "wallets_with_timeout"]);
     let mutant = GLUE.replacen("signer_manager_module.roster_with_timeout(t)", "signer_manager_module.approve_with_timeout(t)", 1);
     assert_ne!(mutant, GLUE, "the mutant applies");
-    assert_eq!(sorted(&mutant), vec!["approve_with_timeout", "on_accounts_changed", "wallets_with_timeout"]);
+    assert_eq!(sorted(&mutant), vec!["approve_with_timeout", "on_accounts_changed", "on_wallets_changed", "on_wallets_locked", "wallets_with_timeout"]);
 }
 
 #[test]
