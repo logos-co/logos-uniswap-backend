@@ -42,7 +42,9 @@ Reads:
 - `fee_tiers(chain_id)`, `accounts()` — relayed. `accounts` is every EVM account any signer
   holds, device accounts included, from the signer manager's roster, with the roster's
   entries under `roster` for the account picker. The keystore's names and wallets come
-  beside them for one release. With no roster, it is the keystore's accounts, as before.
+  beside them for one release, and the manager's `wallets()` by public name under
+  `signerWallets`: a locked wallet's accounts aren't in the roster until the person unlocks it in
+  the Signer app. With no roster, it is the keystore's accounts, as before.
 
 Swaps:
 
@@ -68,7 +70,8 @@ Swaps:
   the token bought, or for ether EIP-7708's ether logs. Absent when no such log was decoded.
 
 Events: `networks_changed`, `tokens_changed`, `accounts_changed`, `swap_status_changed`,
-`swaps_changed`, relayed from the modules that own the facts.
+`swaps_changed`, relayed from the modules that own the facts. `accounts_changed` also fires when
+a wallet unlocks or locks in the Signer app, since `signerWallets` moved.
 
 ## Who asked
 
@@ -117,5 +120,5 @@ nix run github:logos-co/logos-doctest -- run doctests/uniswap-anvil-swap.test.ya
 
 `rust-lib/src/app.rs` holds every rule and is tested there; `rust-lib/tests/glue_shape.rs`
 reads `glue.rs` as text and pins that every call is bounded, the keystore client only reads,
-the signer manager's only reads the roster, money leaves through one sender call, and the
+the signer manager's only reads the roster and the wallets, money leaves through one sender call, and the
 purpose is composed in `app.rs` alone.
