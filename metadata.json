@@ -1,7 +1,7 @@
 {
   "name": "uniswap_backend",
   "display_name": "Uniswap Backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "core",
   "interface": "cdylib",
   "concurrency": "multi",
@@ -10,14 +10,14 @@
   "author": "Logos Core Team",
   "main": "uniswap_backend_plugin",
   "dependencies": [
-    { "name": "eth_rpc_module", "version": "~0.1.0" },
-    { "name": "token_list_module", "version": "~0.1.0" },
-    { "name": "evm_assets_module", "version": "~0.1.0" },
-    { "name": "fee_module", "version": "~0.1.0" },
-    { "name": "keystore_module", "version": "~0.1.0" },
-    { "name": "signer_manager_module", "version": "~0.1.0" },
-    { "name": "tx_sender_module", "version": "~0.1.0" },
-    { "name": "uniswap_module", "version": "~0.1.0" }
+    { "name": "eth_rpc_module", "version": "~0.2.0" },
+    { "name": "token_list_module", "version": "~0.2.0" },
+    { "name": "evm_assets_module", "version": "~0.2.0" },
+    { "name": "fee_module", "version": "~0.2.0" },
+    { "name": "keystore_module", "version": "~0.2.0" },
+    { "name": "signer_manager_module", "version": "~0.2.0" },
+    { "name": "tx_sender_module", "version": "~0.2.0" },
+    { "name": "uniswap_module", "version": "~0.2.0" }
   ],
   "include": [],
   "capabilities": [],
